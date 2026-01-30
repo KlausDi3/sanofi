@@ -1,0 +1,54 @@
+@import "tailwindcss";
+
+:root {
+  /* Colors from design */
+  --background: #F2F3F0;
+  --foreground: #111111;
+  --card: #FFFFFF;
+  --card-foreground: #111111;
+  --border: #CBCCC9;
+  --input: #CBCCC9;
+  --primary: #FF8400;
+  --primary-foreground: #111111;
+  --secondary: #E7E8E5;
+  --secondary-foreground: #111111;
+  --muted: #F2F3F0;
+  --muted-foreground: #666666;
+  --destructive: #D93C15;
+
+  /* Sidebar */
+  --sidebar: #E7E8E5;
+  --sidebar-foreground: #666666;
+  --sidebar-border: #CBCCC9;
+  --sidebar-accent: #CBCCC9;
+  --sidebar-accent-foreground: #18181b;
+
+  /* Semantic colors */
+  --success: #DFE6E1;
+  --success-foreground: #004D1A;
+  --warning: #E9E3D8;
+  --warning-foreground: #804200;
+  --error: #E5DCDA;
+  --error-foreground: #8C1C00;
+  --info: #DFDFE6;
+  --info-foreground: #000066;
+
+  /* Radius */
+  --radius-m: 16px;
+  --radius-pill: 999px;
+  --radius-none: 0px;
+}
+
+@layer base {
+  html, body {
+    height: 100%;
+  }
+
+  .font-primary {
+    font-family: "JetBrains Mono", "SF Mono", "Monaco", "Inconsolata", "Fira Mono", "Droid Sans Mono", "Source Code Pro", monospace;
+  }
+
+  .font-secondary {
+    font-family: "Geist", "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+}

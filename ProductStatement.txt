@@ -1,0 +1,32 @@
+Based on the data we currently have, here is the workflow I am envisioning:
+
+Step 1: Data input
+Data comes either from backend storage or via frontend upload. Question: What data formats and structures should we expect here (e.g., files, corpus objects, metadata)?
+
+Step 2: Frontend trigger
+A frontend action (for example, a “Run Analysis” button) initiates the analysis.
+
+Step 3: Backend processing (HICODE)
+The frontend calls a encapsulated backend API, for example:
+results = hicode.analyze(corpus)
+HICODE takes the input data and performs the analysis.
+Question: Could hicode.analyze() be encapsulated as a clean API interface, and what inputs does it require?
+
+Step 4: Results generation
+The backend generates analysis results.
+Question: What exactly do the results look like? For example, is the output a JSON object containing topics, generated questions, and associated files per topic?
+
+Step 5: Results returned and presented
+The structured results are returned to the frontend, where users can select and view them.
+
+
+
+Discussed the bottleneck for the interface project
+“What is the interesting research question there?"
+Think on what relevant trends and variables to display
+“Where to start (given we don’t have M1&2 done)?"
+Prototype from the demo dashboard in proposal A screenshot of a computer
+
+AI-generated content may be incorrect. 
+
+
