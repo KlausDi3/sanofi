@@ -11,7 +11,9 @@ import { analyzeCorpus, parseFiles, estimateDocumentCount } from "@/lib/hicode";
 export default function AnalysisPage() {
   const [files, setFiles] = useState<File[]>([]);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [progressMessage, setProgressMessage] = useState<string | null>(null);
   const [results, setResults] = useState<AnalysisResult | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   const documentEstimate = files.length > 0 ? estimateDocumentCount(files) : 2500;
 
@@ -19,12 +21,28 @@ export default function AnalysisPage() {
     if (files.length === 0) return;
 
     setIsAnalyzing(true);
+    setError(null);
+    setProgressMessage("Parsing files...");
+
     try {
       const documents = await parseFiles(files);
-      const result = await analyzeCorpus({ documents });
+
+      const result = await analyzeCorpus(
+        { documents },
+        {
+          codingGoal: "understanding the themes and patterns in the corpus",
+          onProgress: (status) => {
+            setProgressMessage(status.progress);
+          },
+        }
+      );
+
       setResults(result);
-    } catch (error) {
-      console.error("Analysis failed:", error);
+      setProgressMessage(null);
+    } catch (err) {
+      console.error("Analysis failed:", err);
+      setError(err instanceof Error ? err.message : "Analysis failed");
+      setProgressMessage(null);
     } finally {
       setIsAnalyzing(false);
     }
@@ -64,6 +82,13 @@ export default function AnalysisPage() {
             </div>
           </header>
 
+          {/* Error Message */}
+          {error && (
+            <div className="px-4 py-3 bg-[var(--color-error)] text-[var(--color-error-foreground)] rounded-lg font-secondary text-sm">
+              {error}
+            </div>
+          )}
+
           {/* Content Grid */}
           <div className="flex gap-6">
             {/* Left Column */}
@@ -73,6 +98,7 @@ export default function AnalysisPage() {
                 fileCount={files.length}
                 documentEstimate={documentEstimate}
                 isLoading={isAnalyzing}
+                progressMessage={progressMessage}
                 onAnalyze={handleAnalyze}
               />
             </div>

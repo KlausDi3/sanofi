@@ -1,5 +1,5 @@
 # Dependencies
-node_modules/
+*/node_modules/
 .pnp/
 .pnp.js
 
@@ -44,3 +44,17 @@ Thumbs.db
 *.log
 *.tmp
 *.temp
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+venv/
+.venv/
+*.egg-info/
+.eggs/
+*.egg
+
+# HICode results
+hicode-api/results/

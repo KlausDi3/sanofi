@@ -6,6 +6,7 @@ interface AnalysisTriggerProps {
   fileCount: number;
   documentEstimate: number;
   isLoading: boolean;
+  progressMessage?: string | null;
   onAnalyze: () => void;
 }
 
@@ -13,6 +14,7 @@ export function AnalysisTrigger({
   fileCount,
   documentEstimate,
   isLoading,
+  progressMessage,
   onAnalyze,
 }: AnalysisTriggerProps) {
   return (
@@ -45,6 +47,16 @@ export function AnalysisTrigger({
           </div>
         </div>
 
+        {/* Progress Message */}
+        {isLoading && progressMessage && (
+          <div className="flex items-center gap-2 px-4 py-2 bg-[var(--secondary)] rounded-lg">
+            <Loader2 className="w-4 h-4 animate-spin text-[var(--primary)]" />
+            <span className="font-secondary text-sm text-[var(--foreground)]">
+              {progressMessage}
+            </span>
+          </div>
+        )}
+
         {/* Run Button */}
         <button
           onClick={onAnalyze}
@@ -54,10 +66,10 @@ export function AnalysisTrigger({
             rounded-full font-primary text-sm font-medium
             transition-all
             ${isLoading || fileCount === 0
-              ? "bg-[var(--primary)]/50 cursor-not-allowed"
-              : "bg-[var(--primary)] hover:bg-[var(--primary)]/90 active:scale-[0.99]"
+              ? "bg-[#2563EB]/50 cursor-not-allowed"
+              : "bg-[#2563EB] hover:bg-[#2563EB]/90 active:scale-[0.99]"
             }
-            text-[var(--primary-foreground)]
+            text-white
           `}
         >
           {isLoading ? (
