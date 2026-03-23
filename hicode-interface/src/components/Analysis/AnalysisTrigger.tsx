@@ -1,6 +1,7 @@
 "use client";
 
-import { Play, FileText, Database, Loader2 } from "lucide-react";
+import { Play, FileText, Database, Loader2, Search } from "lucide-react";
+import { Datasource } from "@/types/analysis";
 
 interface AnalysisTriggerProps {
   fileCount: number;
@@ -8,6 +9,9 @@ interface AnalysisTriggerProps {
   isLoading: boolean;
   progressMessage?: string | null;
   onAnalyze: () => void;
+  hasData: boolean;
+  connectedDatasource: Datasource | null;
+  query: string;
 }
 
 export function AnalysisTrigger({
@@ -16,6 +20,9 @@ export function AnalysisTrigger({
   isLoading,
   progressMessage,
   onAnalyze,
+  hasData,
+  connectedDatasource,
+  query,
 }: AnalysisTriggerProps) {
   return (
     <div className="bg-[var(--card)] border border-[var(--border)] rounded-none shadow-sm">
@@ -32,19 +39,38 @@ export function AnalysisTrigger({
       {/* Content */}
       <div className="p-6 space-y-4">
         {/* Info Row */}
-        <div className="flex items-center gap-6">
-          <div className="flex items-center gap-2">
-            <FileText className="w-4 h-4 text-[var(--muted-foreground)]" />
-            <span className="font-secondary text-sm text-[var(--muted-foreground)]">
-              {fileCount} file{fileCount !== 1 ? "s" : ""} selected
-            </span>
-          </div>
-          <div className="flex items-center gap-2">
-            <Database className="w-4 h-4 text-[var(--muted-foreground)]" />
-            <span className="font-secondary text-sm text-[var(--muted-foreground)]">
-              ~{documentEstimate.toLocaleString()} documents
-            </span>
-          </div>
+        <div className="flex flex-wrap items-center gap-4">
+          {connectedDatasource ? (
+            <div className="flex items-center gap-2">
+              <Database className="w-4 h-4 text-[var(--primary)]" />
+              <span className="font-secondary text-sm text-[var(--muted-foreground)]">
+                {connectedDatasource.name} ({documentEstimate.toLocaleString()} documents)
+              </span>
+            </div>
+          ) : (
+            <>
+              <div className="flex items-center gap-2">
+                <FileText className="w-4 h-4 text-[var(--muted-foreground)]" />
+                <span className="font-secondary text-sm text-[var(--muted-foreground)]">
+                  {fileCount} file{fileCount !== 1 ? "s" : ""} selected
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <Database className="w-4 h-4 text-[var(--muted-foreground)]" />
+                <span className="font-secondary text-sm text-[var(--muted-foreground)]">
+                  ~{documentEstimate.toLocaleString()} documents
+                </span>
+              </div>
+            </>
+          )}
+          {query.trim() && (
+            <div className="flex items-center gap-2">
+              <Search className="w-4 h-4 text-[var(--primary)]" />
+              <span className="font-secondary text-sm text-[var(--primary)]">
+                Embedding filter active
+              </span>
+            </div>
+          )}
         </div>
 
         {/* Progress Message */}
@@ -60,12 +86,12 @@ export function AnalysisTrigger({
         {/* Run Button */}
         <button
           onClick={onAnalyze}
-          disabled={isLoading || fileCount === 0}
+          disabled={isLoading || !hasData}
           className={`
             w-full flex items-center justify-center gap-2 px-6 py-3
             rounded-full font-primary text-sm font-medium
             transition-all
-            ${isLoading || fileCount === 0
+            ${isLoading || !hasData
               ? "bg-[#2563EB]/50 cursor-not-allowed"
               : "bg-[#2563EB] hover:bg-[#2563EB]/90 active:scale-[0.99]"
             }

@@ -1,7 +1,9 @@
 // Matches HICode backend structure
 
 export interface AnalysisInput {
-  documents: Record<string, string>; // doc_id -> text content
+  documents?: Record<string, string>; // doc_id -> text content
+  datasourceId?: string; // backend datasource ID
+  query?: string; // user question for embedding filter
 }
 
 export interface Label {
@@ -26,7 +28,14 @@ export interface Topic {
   questions: string[];
   fileCount: number;
   documents: string[];
+  documentTexts?: Record<string, string>; // doc_id -> review text
   expanded?: boolean;
+}
+
+export interface FilteredReview {
+  id: string;
+  text: string;
+  score: number;
 }
 
 export interface AnalysisResult {
@@ -34,8 +43,11 @@ export interface AnalysisResult {
   status: 'pending' | 'processing' | 'completed' | 'error';
   topics: Topic[];
   totalDocuments: number;
+  filteredDocuments?: number;
+  filteredReviews?: FilteredReview[];
   totalLabels: number;
   clusteringLevels?: Record<string, string[]>[];
+  query?: string;
 }
 
 export interface FileUpload {
@@ -44,4 +56,11 @@ export interface FileUpload {
   size: number;
   type: string;
   documentCount?: number;
+}
+
+export interface Datasource {
+  id: string;
+  name: string;
+  filename: string;
+  documentCount: number;
 }

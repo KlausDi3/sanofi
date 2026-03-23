@@ -5,37 +5,70 @@ import { Sidebar } from "@/components/Sidebar/Sidebar";
 import { DataInputCard } from "@/components/DataInput/DataInputCard";
 import { AnalysisTrigger } from "@/components/Analysis/AnalysisTrigger";
 import { ResultsPanel } from "@/components/Results/ResultsPanel";
-import { AnalysisResult } from "@/types/analysis";
+import { AnalysisResult, Datasource } from "@/types/analysis";
 import { analyzeCorpus, parseFiles, estimateDocumentCount } from "@/lib/hicode";
 
 export default function AnalysisPage() {
   const [files, setFiles] = useState<File[]>([]);
+  const [query, setQuery] = useState("What patterns relate to doctor-patient communication?");
+  const [connectedDatasource, setConnectedDatasource] = useState<Datasource | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [progressMessage, setProgressMessage] = useState<string | null>(null);
   const [results, setResults] = useState<AnalysisResult | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const documentEstimate = files.length > 0 ? estimateDocumentCount(files) : 2500;
+  const documentEstimate = connectedDatasource
+    ? connectedDatasource.documentCount
+    : files.length > 0
+      ? estimateDocumentCount(files)
+      : 0;
+
+  const hasData = connectedDatasource !== null || files.length > 0;
 
   const handleAnalyze = async () => {
-    if (files.length === 0) return;
+    if (!hasData) return;
 
     setIsAnalyzing(true);
     setError(null);
-    setProgressMessage("Parsing files...");
+    setProgressMessage("Initializing...");
 
     try {
-      const documents = await parseFiles(files);
+      let result: AnalysisResult;
 
-      const result = await analyzeCorpus(
-        { documents },
-        {
-          codingGoal: "understanding the themes and patterns in the corpus",
-          onProgress: (status) => {
-            setProgressMessage(status.progress);
+      const codingGoal = "understanding the themes and patterns in the corpus";
+
+      if (connectedDatasource) {
+        // Use backend datasource
+        result = await analyzeCorpus(
+          {
+            datasourceId: connectedDatasource.id,
+            query: query.trim() || undefined,
           },
-        }
-      );
+          {
+            codingGoal,
+            onProgress: (status) => {
+              setProgressMessage(status.progress);
+            },
+          }
+        );
+      } else {
+        // Use uploaded files
+        setProgressMessage("Parsing files...");
+        const documents = await parseFiles(files);
+
+        result = await analyzeCorpus(
+          {
+            documents,
+            query: query.trim() || undefined,
+          },
+          {
+            codingGoal,
+            onProgress: (status) => {
+              setProgressMessage(status.progress);
+            },
+          }
+        );
+      }
 
       setResults(result);
       setProgressMessage(null);
@@ -82,6 +115,17 @@ export default function AnalysisPage() {
             </div>
           </header>
 
+          {/* Usage Instructions */}
+          <div className="px-5 py-4 bg-[var(--secondary)] border border-[var(--border)] rounded-lg">
+            <p className="font-primary text-sm font-medium text-[var(--foreground)] mb-2">How it works</p>
+            <ol className="font-secondary text-sm text-[var(--muted-foreground)] space-y-1 list-decimal list-inside">
+              <li>Connect to the backend dataset or upload your own files</li>
+              <li>Enter a question to focus the analysis on a specific topic</li>
+              <li>Click <span className="font-medium text-[var(--foreground)]">Run Analysis</span> — relevant reviews are filtered by embedding similarity, then HICODE discovers hierarchical topics</li>
+              <li>Expand topics to see labels, associated reviews, and patterns</li>
+            </ol>
+          </div>
+
           {/* Error Message */}
           {error && (
             <div className="px-4 py-3 bg-[var(--color-error)] text-[var(--color-error-foreground)] rounded-lg font-secondary text-sm">
@@ -93,13 +137,23 @@ export default function AnalysisPage() {
           <div className="flex gap-6">
             {/* Left Column */}
             <div className="flex-1 space-y-6">
-              <DataInputCard files={files} onFilesChange={setFiles} />
+              <DataInputCard
+                files={files}
+                onFilesChange={setFiles}
+                query={query}
+                onQueryChange={setQuery}
+                connectedDatasource={connectedDatasource}
+                onDatasourceConnect={setConnectedDatasource}
+              />
               <AnalysisTrigger
-                fileCount={files.length}
+                fileCount={connectedDatasource ? 1 : files.length}
                 documentEstimate={documentEstimate}
                 isLoading={isAnalyzing}
                 progressMessage={progressMessage}
                 onAnalyze={handleAnalyze}
+                hasData={hasData}
+                connectedDatasource={connectedDatasource}
+                query={query}
               />
             </div>
 

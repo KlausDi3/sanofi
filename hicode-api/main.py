@@ -1,13 +1,15 @@
 import os
 import sys
+import csv
 import uuid
 import json
-import asyncio
+import numpy as np
 from typing import Optional
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor
 
 from dotenv import load_dotenv
+from openai import OpenAI
 from fastapi import FastAPI, UploadFile, File, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -26,7 +28,7 @@ app = FastAPI(title="HICode API", version="1.0.0")
 # CORS for frontend
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000", "http://localhost:3002", "https://phytopic.jjluo.com"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -38,13 +40,107 @@ jobs: dict = {}
 # Thread pool for running HICode (CPU-bound)
 executor = ThreadPoolExecutor(max_workers=2)
 
+# OpenAI client for embeddings
+openai_client = OpenAI()
+
+# ============ Datasource Registry ============
+
+DATA_DIR = os.path.join(os.path.dirname(__file__), '..', 'syntheticdata')
+
+def load_csv_dataset(filepath: str) -> dict[str, str]:
+    """Load a CSV file and return doc_id -> text mapping."""
+    documents = {}
+    with open(filepath, 'r', encoding='utf-8') as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            doc_id = row.get('id', f"row-{len(documents)}")
+            text = row.get('review_text', '')
+            documents[doc_id] = text
+    return documents
+
+def get_available_datasources() -> list[dict]:
+    """Scan DATA_DIR for available datasets."""
+    sources = []
+    if os.path.isdir(DATA_DIR):
+        for fname in os.listdir(DATA_DIR):
+            if fname.endswith('.csv'):
+                fpath = os.path.join(DATA_DIR, fname)
+                # Count rows
+                with open(fpath, 'r') as f:
+                    row_count = sum(1 for _ in f) - 1  # minus header
+                sources.append({
+                    "id": fname.replace('.csv', ''),
+                    "name": fname.replace('_', ' ').replace('.csv', '').title(),
+                    "filename": fname,
+                    "documentCount": row_count,
+                    "path": fpath,
+                })
+    return sources
+
+
+# ============ Embedding Utilities ============
+
+def get_embeddings(texts: list[str], model: str = "text-embedding-3-small") -> list[list[float]]:
+    """Get OpenAI embeddings for a list of texts."""
+    response = openai_client.embeddings.create(input=texts, model=model)
+    return [item.embedding for item in response.data]
+
+
+def cosine_similarity(a: list[float], b: list[float]) -> float:
+    """Compute cosine similarity between two vectors."""
+    a_arr = np.array(a)
+    b_arr = np.array(b)
+    return float(np.dot(a_arr, b_arr) / (np.linalg.norm(a_arr) * np.linalg.norm(b_arr)))
+
+
+def filter_by_relevance(
+    documents: dict[str, str],
+    query: str,
+    top_k: int = 50,
+    threshold: float = 0.3,
+) -> tuple[dict[str, str], dict[str, float]]:
+    """Filter documents by embedding similarity to the query.
+    Returns (filtered_docs, similarity_scores)."""
+    doc_ids = list(documents.keys())
+    doc_texts = list(documents.values())
+
+    # Get embeddings
+    all_texts = [query] + doc_texts
+    embeddings = get_embeddings(all_texts)
+    query_embedding = embeddings[0]
+    doc_embeddings = embeddings[1:]
+
+    # Score each document
+    scores = {}
+    for doc_id, doc_emb in zip(doc_ids, doc_embeddings):
+        scores[doc_id] = cosine_similarity(query_embedding, doc_emb)
+
+    # Sort by score descending, take top_k above threshold
+    ranked = sorted(scores.items(), key=lambda x: x[1], reverse=True)
+    filtered = {}
+    filtered_scores = {}
+    for doc_id, score in ranked[:top_k]:
+        if score >= threshold:
+            filtered[doc_id] = documents[doc_id]
+            filtered_scores[doc_id] = score
+
+    # If nothing passes threshold, take at least top 5
+    if len(filtered) == 0:
+        for doc_id, score in ranked[:5]:
+            filtered[doc_id] = documents[doc_id]
+            filtered_scores[doc_id] = score
+
+    return filtered, filtered_scores
+
 
 # ============ Models ============
 
 class AnalysisRequest(BaseModel):
     model_config = {"protected_namespaces": ()}
 
-    documents: dict[str, str]  # doc_id -> text
+    documents: Optional[dict[str, str]] = None  # doc_id -> text (for file upload mode)
+    datasource_id: Optional[str] = None  # backend datasource ID
+    query: Optional[str] = None  # user question for embedding filter
     coding_goal: Optional[str] = "understanding the themes and patterns in the corpus"
     background: Optional[str] = ""
     model_name: Optional[str] = "gpt-4o-mini"
@@ -80,13 +176,20 @@ class AnalysisResult(BaseModel):
 
 # ============ HICode Pipeline ============
 
-def create_system_prompt(coding_goal: str, background: str = "") -> str:
+def create_system_prompt(coding_goal: str, background: str = "", query: str = None) -> str:
     """Create the system prompt for label generation."""
+    query_guidance = ""
+    if query and query.strip():
+        query_guidance = f"""
+The user is specifically interested in: "{query.strip()}"
+Prioritize labels that are relevant to this question, but also capture other meaningful patterns.
+"""
+
     return f"""
 {background}
 
 We are conducting INDUCTIVE Coding. The labeling aims to {coding_goal}
-
+{query_guidance}
 Instruction:
 - Label the input only when it is HIGHLY RELEVANT and USEFUL for {coding_goal}.
 - Then, define the phrase of the label. The label description should be observational, concise and clear.
@@ -99,11 +202,27 @@ Format:
 """
 
 
-def run_hicode_pipeline(job_id: str, documents: dict, coding_goal: str, background: str, model_name: str):
-    """Run the full HICode pipeline."""
+def run_hicode_pipeline(job_id: str, documents: dict, coding_goal: str, background: str, model_name: str, query: str = None):
+    """Run the full HICode pipeline with optional embedding-based filtering."""
     try:
         jobs[job_id]["status"] = "processing"
-        jobs[job_id]["progress"] = "Generating labels..."
+        jobs[job_id]["updated_at"] = datetime.now().isoformat()
+
+        total_documents = len(documents)
+        filtered_count = total_documents
+        relevance_scores = {}
+
+        # Step 0: Embedding-based coarse ranking (if query provided)
+        if query and query.strip():
+            jobs[job_id]["progress"] = "Filtering relevant reviews by embedding similarity..."
+            jobs[job_id]["updated_at"] = datetime.now().isoformat()
+
+            documents, relevance_scores = filter_by_relevance(
+                documents, query, top_k=min(50, total_documents), threshold=0.25
+            )
+            filtered_count = len(documents)
+
+        jobs[job_id]["progress"] = f"Generating labels for {filtered_count} documents..."
         jobs[job_id]["updated_at"] = datetime.now().isoformat()
 
         # Config
@@ -116,7 +235,7 @@ def run_hicode_pipeline(job_id: str, documents: dict, coding_goal: str, backgrou
         }
 
         # Step 1: Label Generation
-        system_prompt = create_system_prompt(coding_goal, background)
+        system_prompt = create_system_prompt(coding_goal, background, query)
 
         # Preprocess documents: add segment index
         data_processed = {}
@@ -153,7 +272,7 @@ def run_hicode_pipeline(job_id: str, documents: dict, coding_goal: str, backgrou
             for label in labels:
                 label_to_theme[label.lower()] = theme
 
-        # Build topics with associated documents
+        # Build topics with associated documents and their texts
         topics = []
         theme_docs: dict[str, set] = {}
         theme_labels: dict[str, set] = {}
@@ -167,25 +286,49 @@ def run_hicode_pipeline(job_id: str, documents: dict, coding_goal: str, backgrou
                         theme_labels.setdefault(theme, set()).add(label)
 
         for idx, (theme_name, labels) in enumerate(final_clusters.items()):
+            doc_ids = list(theme_docs.get(theme_name, []))[:20]
+            # Build document texts mapping: strip _0 suffix to find original text
+            doc_texts = {}
+            for did in doc_ids:
+                # Try direct match first, then strip _0 segment suffix
+                if did in documents:
+                    doc_texts[did] = documents[did]
+                elif did.endswith("_0") and did[:-2] in documents:
+                    doc_texts[did] = documents[did[:-2]]
+
             topics.append({
                 "id": f"topic-{idx + 1}",
                 "name": theme_name,
                 "labels": list(theme_labels.get(theme_name, labels))[:10],
                 "questions": [f"What patterns relate to {theme_name.lower()}?"],
                 "fileCount": len(theme_docs.get(theme_name, [])),
-                "documents": list(theme_docs.get(theme_name, []))[:20],
+                "documents": doc_ids,
+                "documentTexts": doc_texts,
             })
 
         # Count total labels
         all_labels = process_labels(gen_result)
 
+        # Build filtered reviews list (sorted by relevance score)
+        filtered_reviews = []
+        if relevance_scores:
+            for doc_id, score in sorted(relevance_scores.items(), key=lambda x: x[1], reverse=True):
+                filtered_reviews.append({
+                    "id": doc_id,
+                    "text": documents.get(doc_id, ""),
+                    "score": round(score, 4),
+                })
+
         result = {
             "id": job_id,
             "status": "completed",
             "topics": topics,
-            "totalDocuments": len(documents),
+            "totalDocuments": total_documents,
+            "filteredDocuments": filtered_count,
+            "filteredReviews": filtered_reviews,
             "totalLabels": len(all_labels),
             "clusteringLevels": cluster_result,
+            "query": query,
         }
 
         jobs[job_id]["status"] = "completed"
@@ -207,11 +350,44 @@ async def root():
     return {"message": "HICode API", "version": "1.0.0"}
 
 
+@app.get("/api/datasources")
+async def list_datasources():
+    """List available backend datasets."""
+    return {"datasources": get_available_datasources()}
+
+
+@app.get("/api/datasources/{datasource_id}")
+async def get_datasource(datasource_id: str):
+    """Load a specific backend dataset."""
+    sources = get_available_datasources()
+    source = next((s for s in sources if s["id"] == datasource_id), None)
+    if not source:
+        raise HTTPException(status_code=404, detail="Datasource not found")
+
+    documents = load_csv_dataset(source["path"])
+    return {
+        "id": source["id"],
+        "name": source["name"],
+        "documentCount": len(documents),
+        "documents": documents,
+    }
+
+
 @app.post("/api/analyze", response_model=JobStatus)
 async def start_analysis(request: AnalysisRequest, background_tasks: BackgroundTasks):
     """Start a new HICode analysis job."""
-    if not request.documents:
-        raise HTTPException(status_code=400, detail="No documents provided")
+    documents = request.documents
+
+    # If datasource_id provided, load from backend storage
+    if request.datasource_id:
+        sources = get_available_datasources()
+        source = next((s for s in sources if s["id"] == request.datasource_id), None)
+        if not source:
+            raise HTTPException(status_code=404, detail="Datasource not found")
+        documents = load_csv_dataset(source["path"])
+
+    if not documents:
+        raise HTTPException(status_code=400, detail="No documents provided. Either upload files or specify a datasource_id.")
 
     job_id = str(uuid.uuid4())
     now = datetime.now().isoformat()
@@ -230,10 +406,11 @@ async def start_analysis(request: AnalysisRequest, background_tasks: BackgroundT
     background_tasks.add_task(
         run_hicode_pipeline,
         job_id,
-        request.documents,
+        documents,
         request.coding_goal,
         request.background,
         request.model_name,
+        request.query,
     )
 
     return JobStatus(**jobs[job_id])
@@ -308,4 +485,4 @@ async def delete_job(job_id: str):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", 8002)))

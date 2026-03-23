@@ -1,4 +1,4 @@
-import { AnalysisInput, AnalysisResult } from "@/types/analysis";
+import { AnalysisInput, AnalysisResult, Datasource } from "@/types/analysis";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -13,10 +13,40 @@ interface JobStatus {
 }
 
 interface AnalyzeRequest {
-  documents: Record<string, string>;
+  documents?: Record<string, string>;
+  datasource_id?: string;
+  query?: string;
   coding_goal?: string;
   background?: string;
   model_name?: string;
+}
+
+/**
+ * Fetch available backend datasources
+ */
+export async function fetchDatasources(): Promise<Datasource[]> {
+  const response = await fetch(`${API_BASE_URL}/api/datasources`);
+  if (!response.ok) {
+    throw new Error("Failed to fetch datasources");
+  }
+  const data = await response.json();
+  return data.datasources;
+}
+
+/**
+ * Load documents from a backend datasource
+ */
+export async function loadDatasource(datasourceId: string): Promise<{
+  id: string;
+  name: string;
+  documentCount: number;
+  documents: Record<string, string>;
+}> {
+  const response = await fetch(`${API_BASE_URL}/api/datasources/${datasourceId}`);
+  if (!response.ok) {
+    throw new Error("Failed to load datasource");
+  }
+  return response.json();
 }
 
 /**
@@ -31,11 +61,20 @@ export async function startAnalysis(
   }
 ): Promise<JobStatus> {
   const requestBody: AnalyzeRequest = {
-    documents: input.documents,
     coding_goal: options?.codingGoal || "understanding the themes and patterns in the corpus",
     background: options?.background || "",
     model_name: options?.modelName || "gpt-4o-mini",
   };
+
+  if (input.datasourceId) {
+    requestBody.datasource_id = input.datasourceId;
+  } else if (input.documents) {
+    requestBody.documents = input.documents;
+  }
+
+  if (input.query) {
+    requestBody.query = input.query;
+  }
 
   const response = await fetch(`${API_BASE_URL}/api/analyze`, {
     method: "POST",
