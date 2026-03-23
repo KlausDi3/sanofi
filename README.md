@@ -1,222 +1,92 @@
 # HICode Analysis Platform
 
-A full-stack application for automated inductive coding using LLMs. HICode (Hierarchical Inductive Coding) discovers themes and patterns in text corpora through AI-powered label generation and hierarchical clustering.
+A full-stack application for automated inductive coding using LLMs. Upload or connect to a review dataset, ask a question, and HICode discovers hierarchical topics through AI-powered label generation and clustering.
 
-Based on the EMNLP 2025 paper: [HICode: Hierarchical Inductive Coding with LLMs](https://arxiv.org/abs/2509.17946)
+Based on: [HICode: Hierarchical Inductive Coding with LLMs](https://arxiv.org/abs/2509.17946) (EMNLP 2025)
 
-## Overview
+## How It Works
 
-HICode automates qualitative research by:
-1. **Label Generation** - Using GPT to generate descriptive labels for text segments
-2. **Hierarchical Clustering** - Iteratively grouping labels into meaningful themes
-3. **Results Visualization** - Interactive UI to explore discovered topics
+1. **Connect** to a backend dataset or upload files (CSV/JSON/TXT)
+2. **Ask a question** to focus the analysis (e.g., "What patterns relate to doctor-patient communication?")
+3. **Embedding filter** ranks all reviews by similarity to your question, keeps the most relevant
+4. **HICODE labeling** generates descriptive labels per review, guided by your question
+5. **Hierarchical clustering** groups labels into topics
+6. **Results** show filtered reviews with match scores, topics with expandable labels and review texts
 
 ## Project Structure
 
 ```
 Sanofi/
-├── hicode-api/              # FastAPI backend
-│   ├── main.py              # API endpoints
-│   ├── src/                 # HICode core algorithm
-│   │   ├── label_generation.py
-│   │   ├── label_clustering.py
-│   │   └── metrics.py
-│   ├── requirements.txt
-│   └── .env                 # OpenAI API key
-├── hicode-interface/        # Next.js frontend
-│   ├── src/
-│   │   ├── app/             # Pages
-│   │   ├── components/      # UI components
-│   │   ├── lib/             # API client
-│   │   └── types/           # TypeScript types
-│   └── package.json
-├── syntheticdata/           # Sample test data
+├── hicode-api/              # FastAPI backend (port 8002)
+│   ├── main.py              # API endpoints + pipeline
+│   ├── src/                 # HICode core (label_generation, label_clustering)
+│   └── .env                 # OPENAI_API_KEY
+├── hicode-interface/        # Next.js frontend (port 3002)
+│   ├── src/app/             # Main page
+│   ├── src/components/      # DataInputCard, AnalysisTrigger, ResultsPanel, TopicItem
+│   ├── src/lib/hicode.ts    # API client
+│   └── src/types/           # TypeScript interfaces
+├── syntheticdata/           # Sample datasets
 │   └── physician_reviews.csv
-├── start-dev.sh             # Dev server script
-└── README.md
+└── start-dev.sh             # Dev launcher
 ```
-
-## Prerequisites
-
-- Python 3.10+
-- Node.js 18+
-- OpenAI API key
 
 ## Quick Start
 
-### 1. Clone and Setup
-
 ```bash
-cd /path/to/Sanofi
-```
+# 1. Set API key
+echo "OPENAI_API_KEY=your_key" > hicode-api/.env
 
-### 2. Configure API Key
-
-```bash
-# Create .env file in hicode-api/
-echo "OPENAI_API_KEY=your_api_key_here" > hicode-api/.env
-```
-
-### 3. Start Backend
-
-```bash
-cd hicode-api
-python3 -m venv venv
-source venv/bin/activate
+# 2. Backend
+cd hicode-api && python3 -m venv venv && source venv/bin/activate
 pip install -r requirements.txt
-python main.py
+PORT=8002 python main.py
+
+# 3. Frontend (new terminal)
+cd hicode-interface && npm install
+echo "NEXT_PUBLIC_API_URL=http://localhost:8002" > .env.local
+PORT=3002 npm run dev
 ```
 
-Backend runs at: http://localhost:8000
-
-### 4. Start Frontend
-
-```bash
-# In a new terminal
-cd hicode-interface
-npm install
-npm run dev
-```
-
-Frontend runs at: http://localhost:3000
-
-## Usage
-
-1. Open http://localhost:3000
-2. Upload your data files (CSV, JSON, or TXT)
-3. Click "Run Analysis"
-4. View discovered topics and themes
-
-### Supported File Formats
-
-| Format | Structure |
-|--------|-----------|
-| CSV | `id,text` columns (header row required) |
-| JSON | `{"doc_id": "text content", ...}` or array of strings |
-| TXT | Plain text (split by paragraphs) |
+Open http://localhost:3002
 
 ## API Endpoints
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/` | GET | Health check |
-| `/api/analyze` | POST | Start analysis job |
-| `/api/status/{job_id}` | GET | Get job status/results |
+| `/api/datasources` | GET | List available backend datasets |
+| `/api/datasources/{id}` | GET | Load a dataset |
+| `/api/analyze` | POST | Start analysis (accepts `datasource_id`, `query`, `documents`) |
+| `/api/status/{job_id}` | GET | Poll job status and results |
 | `/api/upload` | POST | Upload and parse files |
 | `/api/jobs` | GET | List all jobs |
 
-### Example: Start Analysis
+### Example
 
 ```bash
-curl -X POST http://localhost:8000/api/analyze \
+curl -X POST http://localhost:8002/api/analyze \
   -H "Content-Type: application/json" \
   -d '{
-    "documents": {
-      "doc1": "Patient reported excellent care and minimal wait time.",
-      "doc2": "Long wait times but thorough examination."
-    },
-    "coding_goal": "understanding patient satisfaction factors"
+    "datasource_id": "physician_reviews",
+    "query": "What patterns relate to doctor-patient communication?"
   }'
-```
-
-### Example: Check Status
-
-```bash
-curl http://localhost:8000/api/status/{job_id}
-```
-
-## Configuration
-
-### Backend (`hicode-api/.env`)
-
-```env
-OPENAI_API_KEY=sk-...
-```
-
-### Frontend (`hicode-interface/.env.local`)
-
-```env
-NEXT_PUBLIC_API_URL=http://localhost:8000
-```
-
-## Algorithm Details
-
-### Label Generation
-
-The system prompts GPT to generate observational labels for each text segment:
-
-```
-LABEL: [descriptive phrase]
-```
-
-Labels that are irrelevant to the coding goal are filtered out.
-
-### Hierarchical Clustering
-
-Labels are clustered iteratively:
-1. Batch labels (100 per batch)
-2. GPT clusters similar labels into themes
-3. Theme names become input for next iteration
-4. Repeat until convergence (single batch)
-
-### Evaluation Metrics
-
-- **Theme Precision/Recall** - Semantic similarity between predicted and gold themes
-- **Segment Precision/Recall** - Accuracy of segment-level labeling
-
-## Sample Data
-
-Test with the included physician reviews dataset:
-
-```bash
-# Upload via API
-curl -X POST http://localhost:8000/api/upload \
-  -F "files=@syntheticdata/physician_reviews.csv"
-```
-
-Or drag-and-drop in the web interface.
-
-## Development
-
-### Backend Development
-
-```bash
-cd hicode-api
-source venv/bin/activate
-uvicorn main:app --reload --port 8000
-```
-
-### Frontend Development
-
-```bash
-cd hicode-interface
-npm run dev
 ```
 
 ## Tech Stack
 
-**Backend:**
-- FastAPI (Python)
-- OpenAI GPT-4o-mini
-- Sentence Transformers (for metrics)
-
-**Frontend:**
-- Next.js 16
-- React 19
-- Tailwind CSS 4
-- Lucide Icons
+- **Backend:** FastAPI, OpenAI GPT-4o-mini + text-embedding-3-small, NumPy
+- **Frontend:** Next.js 16, React 19, Tailwind CSS 4, Lucide Icons
 
 ## Citation
 
 ```bibtex
-@misc{zhong2025hicodehierarchicalinductivecoding,
-      title={HICode: Hierarchical Inductive Coding with LLMs},
-      author={Mian Zhong and Pristina Wang and Anjalie Field},
-      year={2025},
-      eprint={2509.17946},
-      archivePrefix={arXiv},
-      primaryClass={cs.CL},
-      url={https://arxiv.org/abs/2509.17946},
+@misc{zhong2025hicode,
+  title={HICode: Hierarchical Inductive Coding with LLMs},
+  author={Mian Zhong and Pristina Wang and Anjalie Field},
+  year={2025},
+  eprint={2509.17946},
+  archivePrefix={arXiv},
+  url={https://arxiv.org/abs/2509.17946},
 }
 ```
 
