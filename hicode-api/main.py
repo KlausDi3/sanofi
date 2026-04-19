@@ -40,8 +40,15 @@ jobs: dict = {}
 # Thread pool for running HICode (CPU-bound)
 executor = ThreadPoolExecutor(max_workers=2)
 
-# OpenAI client for embeddings
-openai_client = OpenAI()
+# Mock mode: skip OpenAI calls (auto-enabled when OPENAI_API_KEY is missing, or set USE_MOCK=true)
+USE_MOCK = os.environ.get("USE_MOCK", "").lower() == "true" or not os.environ.get("OPENAI_API_KEY")
+
+# OpenAI client for embeddings (skip init in mock mode)
+try:
+    openai_client = OpenAI() if not USE_MOCK else None
+except Exception:
+    openai_client = None
+    USE_MOCK = True
 
 # ============ Datasource Registry ============
 
@@ -202,8 +209,71 @@ Format:
 """
 
 
+def run_mock_pipeline(job_id: str, documents: dict, query: str = None):
+    """Return fake but realistic-looking results without calling OpenAI."""
+    import time
+    import random
+    try:
+        jobs[job_id]["status"] = "processing"
+        jobs[job_id]["progress"] = "Running in mock mode (no OpenAI calls)..."
+        jobs[job_id]["updated_at"] = datetime.now().isoformat()
+        time.sleep(2)
+
+        total = len(documents)
+        doc_ids = list(documents.keys())
+        picked = doc_ids[:min(18, total)]
+
+        filtered_reviews = [
+            {"id": did, "text": documents[did], "score": round(random.uniform(0.35, 0.92), 4)}
+            for did in picked
+        ]
+        filtered_reviews.sort(key=lambda r: r["score"], reverse=True)
+
+        topic_specs = [
+            ("Communication Quality", ["Clear explanations", "Active listening", "Respectful tone", "Empathy shown"]),
+            ("Wait Times & Scheduling", ["Long waits", "Rushed appointments", "Hard to schedule", "Delayed follow-up"]),
+            ("Clinical Competence", ["Accurate diagnosis", "Thorough examination", "Appropriate treatment", "Medical knowledge"]),
+        ]
+        topics = []
+        for idx, (name, labels) in enumerate(topic_specs):
+            start, end = idx * 6, (idx + 1) * 6
+            doc_slice = picked[start:end]
+            topics.append({
+                "id": f"topic-{idx + 1}",
+                "name": name,
+                "labels": labels,
+                "questions": [f"What patterns relate to {name.lower()}?"],
+                "fileCount": len(doc_slice),
+                "documents": doc_slice,
+                "documentTexts": {did: documents[did] for did in doc_slice},
+            })
+
+        result = {
+            "id": job_id,
+            "status": "completed",
+            "topics": topics,
+            "totalDocuments": total,
+            "filteredDocuments": len(picked),
+            "filteredReviews": filtered_reviews,
+            "totalLabels": sum(len(t["labels"]) for t in topics),
+            "clusteringLevels": None,
+            "query": query,
+            "mock": True,
+        }
+        jobs[job_id]["status"] = "completed"
+        jobs[job_id]["result"] = result
+        jobs[job_id]["progress"] = None
+        jobs[job_id]["updated_at"] = datetime.now().isoformat()
+    except Exception as e:
+        jobs[job_id]["status"] = "error"
+        jobs[job_id]["error"] = str(e)
+        jobs[job_id]["updated_at"] = datetime.now().isoformat()
+
+
 def run_hicode_pipeline(job_id: str, documents: dict, coding_goal: str, background: str, model_name: str, query: str = None):
     """Run the full HICode pipeline with optional embedding-based filtering."""
+    if USE_MOCK:
+        return run_mock_pipeline(job_id, documents, query)
     try:
         jobs[job_id]["status"] = "processing"
         jobs[job_id]["updated_at"] = datetime.now().isoformat()
