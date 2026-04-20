@@ -28,7 +28,7 @@ app = FastAPI(title="HICode API", version="1.0.0")
 # CORS for frontend
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000", "http://localhost:3002", "https://phytopic.jjluo.com"],
+    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000", "http://localhost:3002", "https://phytopic.jjluo.com", "https://sanofi.onrender.com"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
