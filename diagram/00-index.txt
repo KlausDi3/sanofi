@@ -1,0 +1,47 @@
+📐 HICode Diagram Index
+═══════════════════════════════════════════════════════════
+
+📦 app/sanofi/diagram/
+├── 📄 00-index.txt                      this file
+├── 🎨 01-hicode-workflow.excalidraw     upstream paper canvas (editable)
+├── 🖼️  01-hicode-workflow.png            rendered preview
+├── 📄 02-architecture.txt               full-stack arch + pipeline + lifecycle
+└── 📄 03-folder-tree.txt                annotated repo layout + nav hints
+
+─§ TL;DR — what is this app? ───────────────────────────────
+
+🏷️ HICode = Hierarchical Inductive Coding with LLMs (EMNLP'25)
+📦 Two services + OpenAI:
+
+  🌐 hicode-interface (Next.js, :3002)   ⚙️ hicode-api (FastAPI, :8002)
+        ▲                                      │
+        │ POST /api/analyze                    ▼
+        │ GET  /api/status/{id}    🤖 OpenAI (embeddings + gpt-4o-mini)
+        ▼                                      ▲
+   user picks dataset + asks a question        │
+                                       1️⃣ filter by embedding cosine
+                                       2️⃣ label each review via GPT
+                                       3️⃣ iteratively cluster labels
+                                       4️⃣ map themes → reviews → return
+
+─§ One-liner pipeline ─────────────────────────────────────
+
+📂 docs ─▶ 🎯 embed-filter ─▶ 🏷️ GPT label ─▶ 🌲 GPT cluster ─▶ 📋 topics
+
+─§ Reading order ──────────────────────────────────────────
+
+  1. 03-folder-tree.txt   →  "where does code live?"
+  2. 02-architecture.txt  →  "how do the pieces talk?"
+  3. 01-hicode-workflow   →  upstream paper's algorithmic view
+
+─§ How to view / edit canvas ──────────────────────────────
+
+  🖼️  PNG          →  open 01-hicode-workflow.png
+  ✏️  Edit canvas  →  excalidraw.com  ▶  Open  ▶  pick .excalidraw
+
+─§ Adding new diagrams here ───────────────────────────────
+
+  🔢 numbered prefix  (04-, 05- …)
+  📂 keep flat        (no sub-folders unless 10+ files)
+  🖼️  pair .excalidraw with rendered .png  when useful
+  📄 prefer .txt over .md (markdown breaks monospace alignment)

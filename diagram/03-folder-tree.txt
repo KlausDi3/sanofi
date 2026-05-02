@@ -1,0 +1,71 @@
+🌳 Repo Layout — app/sanofi
+═══════════════════════════════════════════════════════════════════════════
+
+Two packages (api + interface) + sample data. Each package is
+self-contained and has its own deps + start command.
+
+─§ Annotated tree ───────────────────────────────────────────────────────
+
+📦 app/sanofi/
+│
+├── 📄 README.md                         project overview + quickstart
+├── 📄 ProductStatement.txt              one-pager pitch
+├── 🚀 start-dev.sh                      launches api + interface together
+├── 🎨 sanofi-frontend.pen               design source (Pen / Penpot)
+│
+├── 📂 hicode-api/                       ⚙️  FastAPI backend  (port 8002)
+│   ├── 📄 main.py                       routes + pipeline orchestration
+│   ├── 📄 requirements.txt              pinned Python deps
+│   ├── 📄 README.md
+│   └── 📂 src/
+│       ├── 🏷️  label_generation.py      step 1 — per-doc GPT labels
+│       ├── 🌲 label_clustering.py        step 2 — iterative GPT clusters
+│       └── 📊 metrics.py                 quality / agreement metrics
+│
+├── 📂 hicode-interface/                 🌐  Next.js frontend  (port 3002)
+│   ├── 📄 package.json                  React 19 + Tailwind 4 + lucide
+│   ├── 📄 tsconfig.json
+│   └── 📂 src/
+│       ├── 📂 app/                      Next.js app-router entry
+│       │   ├── layout.tsx               root layout + fonts
+│       │   └── page.tsx                 main analysis page (state hub)
+│       ├── 📂 components/
+│       │   ├── 📂 DataInput/            DataInputCard · FileUpload
+│       │   ├── 📂 Analysis/             AnalysisTrigger (run button)
+│       │   ├── 📂 Results/              ResultsPanel · TopicItem
+│       │   └── 📂 Sidebar/              Sidebar · NavItem
+│       ├── 📂 lib/
+│       │   └── hicode.ts                REST client + polling loop
+│       ├── 📂 types/
+│       │   └── analysis.ts              shared TS types
+│       └── 📂 data/
+│           └── mockData.ts              dev fixtures
+│
+├── 📂 syntheticdata/                    📊  sample CSVs (one row = one review)
+│   └── physician_reviews.csv
+│
+├── 📂 HICode/                           📚  upstream paper code (vendored, EMNLP'25)
+├── 📂 hicode-api/  (covered above)
+├── 📂 code-logging/                     🐛  dev logs / experiment traces
+├── 📂 images/                           🖼️  (former) screenshots
+│
+└── 📂 diagram/                          📐  THIS folder — ASCII + canvas diagrams
+    ├── 00-index.txt
+    ├── 01-hicode-workflow.excalidraw    upstream HICode workflow canvas
+    ├── 01-hicode-workflow.png           rendered preview
+    ├── 02-architecture.txt              full-stack arch + pipeline + lifecycle
+    └── 03-folder-tree.txt               this file
+
+─§ Quick "where do I look?" ─────────────────────────────────────────────
+
+  🔍 New REST endpoint?    ──▶  hicode-api/main.py
+  🔍 Tweak GPT prompt?     ──▶  main.py · create_system_prompt()
+                                src/label_clustering.py · make_clustering_prompt()
+  🔍 Embedding filter?     ──▶  main.py · filter_by_relevance()
+  🔍 Add a UI panel?       ──▶  hicode-interface/src/components/<Section>/
+                                wire into src/app/page.tsx
+  🔍 Change API base URL?  ──▶  NEXT_PUBLIC_API_URL  in .env.local
+  🔍 Add new dataset?      ──▶  drop a *.csv in syntheticdata/
+                                (auto-discovered via /api/datasources)
+  🔍 Run end-to-end?       ──▶  ./start-dev.sh
+                                or per-package commands in README.md
