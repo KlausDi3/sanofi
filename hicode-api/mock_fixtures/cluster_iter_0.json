@@ -1,0 +1,114 @@
+{
+    "Family and Personal Recommendations": [
+        "Family referral to provider",
+        "Referred by someone",
+        "Referred by family member",
+        "Referred by family members",
+        "Referred by personal recommendations from friends and family",
+        "Referral by personal recommendation",
+        "Referred by co-worker",
+        "Referred by long-time dentist",
+        "Family member suggested a procedure"
+    ],
+    "Physician Referrals": [
+        "Recommended by previous Neurosurgeon",
+        "Referred by primary care physician",
+        "Referred by another physician",
+        "Referred by Pediatrician",
+        "Referred by ENT for dermatology consultation due to ongoing ear mass",
+        "Referred by Dr. McLennen for physical therapy",
+        "Referred by GI doctor to Dr. Martinez",
+        "Referred by Dr. G to another specialist",
+        "Referred by Dr. Ewing to a retinal specialist",
+        "Referred by previous GYNs for unresolved condition.",
+        "Referred by a renowned ophthalmologist",
+        "Referred by previous experience with another provider",
+        "Referred by previous doctor going on maternity leave",
+        "Referred by primary physician who retired",
+        "Referred by another physician due to HMO changes."
+    ],
+    "Emergency and Urgent Care Referrals": [
+        "The ER doctor sent me to him",
+        "Referred to Park West emergency room for serotonin syndrome work up per Peninsula",
+        "Referred through emergency room visit",
+        "Referred to Dr. De Leon as a new patient needing emergency Endodontic care",
+        "I was an emergency"
+    ],
+    "Self-Referral and Research": [
+        "Patient self-referred after searching for specialists",
+        "Found through online research",
+        "Decided to try based on positive reviews",
+        "New to the area, seeking a local doctor",
+        "Referred through personal history with the physician since 2010."
+    ],
+    "Second Opinions and Consultations": [
+        "Second opinion referral",
+        "Referral for second opinion",
+        "Referrals for second opinion from another doctor.",
+        "Referred after consulting multiple surgeons for consensus",
+        "Referred after meeting with a few different specialists",
+        "Referred through a post-conference book signing for a second opinion"
+    ],
+    "Patient Experience and Trust": [
+        "Trust in the physician leading to continued care",
+        "Patient has followed the physician to different locations",
+        "Patients followed the physician from his previous practice.",
+        "Following a physician to their next practice",
+        "Referred to current provider after negative experience with previous provider."
+    ],
+    "Miscellaneous Referrals": [
+        "Referred to Dr. Mendelson for taste restoration",
+        "Referred to Dr. Lavin after having numerous hospital stays and issues with other doctors",
+        "Referred to Dr. Prok",
+        "Referred to Dr. Mikles for knee surgery after snow skiing injury",
+        "Referred by hotel recommendation",
+        "Referred by call to another physician",
+        "Referred to another psychiatrist who was accepting new patients",
+        "Referral through a colleague for scheduling CT Scans",
+        "Referred by support and motivation from the physician",
+        "Referred by a different doctor regarding glaucoma risk and potential cancer",
+        "Referred by someone with a high rating",
+        "Referred by previous doctor's records",
+        "Referred by a surgeon due to serious infection",
+        "Referred from B&W hospital to a reputable urologist",
+        "Referred by Dr. Maloney to a VITREOUS GEL specialist",
+        "Referred by Dr. Kung",
+        "Referred due to regular doctor's office being closed",
+        "Referred by previous doctor's retirement"
+    ],
+    "Personal Recommendations": [
+        "Recommended by others",
+        "Referred by highly satisfied friends",
+        "Referred by parents and peers in the medical field",
+        "Patient referred to the provider through personal recommendations to others",
+        "Recommended by friends for procedure",
+        "Referred her to all my family"
+    ],
+    "Professional Referrals": [
+        "Referred by prior experience with the same physician",
+        "Referred by another doctor due to a serious condition",
+        "Referred by primary doctor after ER visit",
+        "Referred by workers compensation",
+        "Referred by OB recommendation to a private practice for d&c"
+    ],
+    "Second Opinions": [
+        "Patient sought a second opinion from orthopedic associates after dissatisfaction with the initial provider.",
+        "Obtained a second opinion"
+    ],
+    "Direct Referrals": [
+        "Directed to Yellowbrick",
+        "Came in as the Dr on call",
+        "Referred to Dr Brian Blackburn",
+        "Patient was referred to a urologist by the current provider."
+    ],
+    "Personal Initiatives": [
+        "Referred by personal search for an orthopedic surgeon",
+        "Tried to make an appointment today",
+        "Patient travels from Kaufmann Texas",
+        "Husband requested Dr. Woll",
+        "fast tracked me to Florida Cancer Specialists"
+    ],
+    "Previous Relationships": [
+        "I left Greensboro Peds to follow and support her"
+    ]
+}

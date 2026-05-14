@@ -257,78 +257,166 @@ def chain_cluster_iterations(cluster_iters: list[dict]) -> dict[str, str]:
     }
 
 
+def build_pipeline_result(
+    gen_result: dict,
+    cluster_result: list[dict],
+    documents: dict[str, str],
+    query: Optional[str],
+    relevance_scores: Optional[dict[str, float]] = None,
+    job_id: Optional[str] = None,
+) -> dict:
+    """Aggregate generation + clustering output into the API response shape.
+
+    Used by both the real pipeline (after generate_labels + cluster_labels_gpt)
+    and run_mock_pipeline (which feeds in canned fixtures), so the two paths
+    return identical-shape results — same topics, prevalence, co-occurrence.
+    """
+    final_clusters = cluster_result[-1] if cluster_result else {}
+    label_to_theme = chain_cluster_iterations(cluster_result or [])
+
+    theme_docs: dict[str, set] = {}
+    theme_labels: dict[str, set] = {}
+    doc_to_themes: dict[str, set] = {}
+
+    for doc_id, doc_data in gen_result.items():
+        for annotation in doc_data.get("LLM_Annotation", []):
+            for label in annotation.get("label", []):
+                theme = label_to_theme.get(label.lower())
+                if theme:
+                    theme_docs.setdefault(theme, set()).add(doc_id)
+                    theme_labels.setdefault(theme, set()).add(label)
+                    doc_to_themes.setdefault(doc_id, set()).add(theme)
+
+    topics = []
+    for idx, (theme_name, labels) in enumerate(final_clusters.items()):
+        doc_ids = list(theme_docs.get(theme_name, []))[:20]
+        doc_texts = {}
+        for did in doc_ids:
+            if did in documents:
+                doc_texts[did] = documents[did]
+            elif did.endswith("_0") and did[:-2] in documents:
+                doc_texts[did] = documents[did[:-2]]
+
+        topics.append({
+            "id": f"topic-{idx + 1}",
+            "name": theme_name,
+            "labels": list(theme_labels.get(theme_name, labels))[:10],
+            "questions": [f"What patterns relate to {theme_name.lower()}?"],
+            "fileCount": len(theme_docs.get(theme_name, [])),
+            "documents": doc_ids,
+            "documentTexts": doc_texts,
+        })
+
+    total_labels = 0
+    for doc_data in gen_result.values():
+        for annotation in doc_data.get("LLM_Annotation", []):
+            total_labels += len(annotation.get("label", []))
+
+    filtered_reviews = []
+    if relevance_scores:
+        for doc_id, score in sorted(relevance_scores.items(), key=lambda x: x[1], reverse=True):
+            filtered_reviews.append({
+                "id": doc_id,
+                "text": documents.get(doc_id, ""),
+                "score": round(score, 4),
+            })
+
+    # Labels per theme: count of raw-label entries in the chain that resolve
+    # to each final theme (matches notebook cell 21).
+    theme_label_counts: dict[str, int] = {}
+    for _raw_label, theme_name in label_to_theme.items():
+        theme_label_counts[theme_name] = theme_label_counts.get(theme_name, 0) + 1
+
+    theme_doc_counts: dict[str, int] = {t: len(d) for t, d in theme_docs.items()}
+
+    themes_ordered = sorted(theme_doc_counts.keys())
+    theme_idx = {t: i for i, t in enumerate(themes_ordered)}
+    n_themes = len(themes_ordered)
+    co_matrix = [[0] * n_themes for _ in range(n_themes)]
+    for themes_in_doc in doc_to_themes.values():
+        themes_list = list(themes_in_doc)
+        for t1 in themes_list:
+            for t2 in themes_list:
+                if t1 != t2:
+                    co_matrix[theme_idx[t1]][theme_idx[t2]] += 1
+
+    return {
+        "id": job_id,
+        "status": "completed",
+        "topics": topics,
+        "totalDocuments": len(documents),
+        "filteredDocuments": len(filtered_reviews) if filtered_reviews else len(documents),
+        "filteredReviews": filtered_reviews,
+        "totalLabels": total_labels,
+        "clusteringLevels": cluster_result,
+        "query": query,
+        "themesOrdered": themes_ordered,
+        "themeLabelCounts": theme_label_counts,
+        "themeDocCounts": theme_doc_counts,
+        "coOccurrenceMatrix": co_matrix,
+    }
+
+
+_MOCK_FIXTURE_DIR = os.path.join(os.path.dirname(__file__), "mock_fixtures")
+_mock_fixture_cache: Optional[dict] = None
+
+
+def _load_mock_fixtures() -> dict:
+    """Lazily load the canned HICode run from notebooks/results/ (copied
+    into mock_fixtures/ at build time). 117 reviews, 5 themes, real labels."""
+    global _mock_fixture_cache
+    if _mock_fixture_cache is None:
+        with open(os.path.join(_MOCK_FIXTURE_DIR, "generation.json")) as f:
+            gen = json.load(f)
+        with open(os.path.join(_MOCK_FIXTURE_DIR, "cluster_iter_0.json")) as f:
+            iter_0 = json.load(f)
+        with open(os.path.join(_MOCK_FIXTURE_DIR, "cluster_iter_1.json")) as f:
+            iter_1 = json.load(f)
+        with open(os.path.join(_MOCK_FIXTURE_DIR, "documents.json")) as f:
+            docs = json.load(f)
+        _mock_fixture_cache = {
+            "gen_result": gen,
+            "cluster_result": [iter_0, iter_1],
+            "documents": docs,
+        }
+    return _mock_fixture_cache
+
+
 def run_mock_pipeline(job_id: str, documents: dict, query: str = None):
-    """Return fake but realistic-looking results without calling OpenAI."""
+    """Serve a real HICode run (the one in notebooks/results/) without calling
+    OpenAI. Output shape is identical to run_hicode_pipeline because both go
+    through build_pipeline_result."""
     import time
     import random
     try:
         jobs[job_id]["status"] = "processing"
-        jobs[job_id]["progress"] = "Running in mock mode (no OpenAI calls)..."
+        jobs[job_id]["progress"] = "Running in mock mode (serving canned analysis fixtures)..."
         jobs[job_id]["updated_at"] = datetime.now().isoformat()
-        time.sleep(2)
+        time.sleep(1.5)
 
-        total = len(documents)
-        doc_ids = list(documents.keys())
-        picked = doc_ids[:min(18, total)]
+        fixtures = _load_mock_fixtures()
+        fixture_docs = fixtures["documents"]
 
-        filtered_reviews = [
-            {"id": did, "text": documents[did], "score": round(random.uniform(0.35, 0.92), 4)}
-            for did in picked
-        ]
-        filtered_reviews.sort(key=lambda r: r["score"], reverse=True)
+        # Fake similarity scores so the Filtered Reviews panel renders when
+        # the user supplied a query — real embeddings aren't reachable here.
+        relevance_scores = None
+        if query and query.strip():
+            sampled_ids = random.sample(list(fixture_docs.keys()),
+                                        min(18, len(fixture_docs)))
+            relevance_scores = {
+                did: round(random.uniform(0.35, 0.92), 4) for did in sampled_ids
+            }
 
-        topic_specs = [
-            ("Communication Quality", ["Clear explanations", "Active listening", "Respectful tone", "Empathy shown"]),
-            ("Wait Times & Scheduling", ["Long waits", "Rushed appointments", "Hard to schedule", "Delayed follow-up"]),
-            ("Clinical Competence", ["Accurate diagnosis", "Thorough examination", "Appropriate treatment", "Medical knowledge"]),
-        ]
-        topics = []
-        for idx, (name, labels) in enumerate(topic_specs):
-            start, end = idx * 6, (idx + 1) * 6
-            doc_slice = picked[start:end]
-            topics.append({
-                "id": f"topic-{idx + 1}",
-                "name": name,
-                "labels": labels,
-                "questions": [f"What patterns relate to {name.lower()}?"],
-                "fileCount": len(doc_slice),
-                "documents": doc_slice,
-                "documentTexts": {did: documents[did] for did in doc_slice},
-            })
+        result = build_pipeline_result(
+            gen_result=fixtures["gen_result"],
+            cluster_result=fixtures["cluster_result"],
+            documents=fixture_docs,
+            query=query,
+            relevance_scores=relevance_scores,
+            job_id=job_id,
+        )
+        result["mock"] = True
 
-        # Prevalence + co-occurrence so the Labels/Docs/Co-occurrence tabs
-        # aren't disabled in mock mode (the real pipeline builds these from
-        # the cluster tree; here we synthesize plausible numbers).
-        theme_names = [t["name"] for t in topics]
-        themes_ordered = sorted(theme_names)
-        theme_label_counts = {t["name"]: len(t["labels"]) for t in topics}
-        theme_doc_counts = {t["name"]: t["fileCount"] for t in topics}
-
-        n = len(themes_ordered)
-        co_matrix = [[0] * n for _ in range(n)]
-        for i in range(n):
-            for j in range(i + 1, n):
-                pair_count = random.randint(2, max(2, min(theme_doc_counts[themes_ordered[i]],
-                                                          theme_doc_counts[themes_ordered[j]])))
-                co_matrix[i][j] = pair_count
-                co_matrix[j][i] = pair_count
-
-        result = {
-            "id": job_id,
-            "status": "completed",
-            "topics": topics,
-            "totalDocuments": total,
-            "filteredDocuments": len(picked),
-            "filteredReviews": filtered_reviews,
-            "totalLabels": sum(len(t["labels"]) for t in topics),
-            "clusteringLevels": None,
-            "query": query,
-            "themesOrdered": themes_ordered,
-            "themeLabelCounts": theme_label_counts,
-            "themeDocCounts": theme_doc_counts,
-            "coOccurrenceMatrix": co_matrix,
-            "mock": True,
-        }
         jobs[job_id]["status"] = "completed"
         jobs[job_id]["result"] = result
         jobs[job_id]["progress"] = None
@@ -402,110 +490,19 @@ def run_hicode_pipeline(job_id: str, documents: dict, coding_goal: str, backgrou
         jobs[job_id]["progress"] = "Building results..."
         jobs[job_id]["updated_at"] = datetime.now().isoformat()
 
-        # Step 3: Build response
-        final_clusters = cluster_result[-1] if cluster_result else {}
-
-        # Walk the FULL iteration chain so raw labels (not just iter_{-2} parents)
-        # find their final theme. Without this, multi-iter runs would lose most
-        # labels because label_to_theme keyed by iter_{N-1} parents won't match
-        # raw labels produced by generation.
-        label_to_theme = chain_cluster_iterations(cluster_result or [])
-
-        # Build topics with associated documents and their texts
-        topics = []
-        theme_docs: dict[str, set] = {}
-        theme_labels: dict[str, set] = {}
-        doc_to_themes: dict[str, set] = {}  # for prevalence / co-occurrence aggregation
-
-        for doc_id, doc_data in gen_result.items():
-            for annotation in doc_data.get("LLM_Annotation", []):
-                for label in annotation.get("label", []):
-                    theme = label_to_theme.get(label.lower())
-                    if theme:
-                        theme_docs.setdefault(theme, set()).add(doc_id)
-                        theme_labels.setdefault(theme, set()).add(label)
-                        doc_to_themes.setdefault(doc_id, set()).add(theme)
-
-        for idx, (theme_name, labels) in enumerate(final_clusters.items()):
-            doc_ids = list(theme_docs.get(theme_name, []))[:20]
-            # Build document texts mapping: strip _0 suffix to find original text
-            doc_texts = {}
-            for did in doc_ids:
-                # Try direct match first, then strip _0 segment suffix
-                if did in documents:
-                    doc_texts[did] = documents[did]
-                elif did.endswith("_0") and did[:-2] in documents:
-                    doc_texts[did] = documents[did[:-2]]
-
-            topics.append({
-                "id": f"topic-{idx + 1}",
-                "name": theme_name,
-                "labels": list(theme_labels.get(theme_name, labels))[:10],
-                "questions": [f"What patterns relate to {theme_name.lower()}?"],
-                "fileCount": len(theme_docs.get(theme_name, [])),
-                "documents": doc_ids,
-                "documentTexts": doc_texts,
-            })
-
-        # Count total labels
-        all_labels = process_labels(gen_result)
-
-        # Build filtered reviews list (sorted by relevance score)
-        filtered_reviews = []
-        if relevance_scores:
-            for doc_id, score in sorted(relevance_scores.items(), key=lambda x: x[1], reverse=True):
-                filtered_reviews.append({
-                    "id": doc_id,
-                    "text": documents.get(doc_id, ""),
-                    "score": round(score, 4),
-                })
-
-        # ── Prevalence aggregations (for the 3 visualization charts) ──
-        # 1) Label count per theme: how many raw labels rolled up into each theme.
-        #    Counts every raw label that has a path in the cluster tree (matches
-        #    notebook cell 21: pd.DataFrame(label_map).theme.value_counts()).
-        #    This is "cluster-tree structure" not "doc-allocated" — a raw label
-        #    is counted even if it wasn't actually assigned to any doc.
-        theme_label_counts: dict[str, int] = {}
-        for _raw_label, theme_name in label_to_theme.items():
-            theme_label_counts[theme_name] = theme_label_counts.get(theme_name, 0) + 1
-
-        # 2) Document count per theme: how many distinct docs contain each theme
-        theme_doc_counts: dict[str, int] = {
-            theme: len(docs) for theme, docs in theme_docs.items()
-        }
-
-        # 3) Theme × theme co-occurrence matrix (symmetric, diagonal = 0).
-        #    For every doc, every unordered pair of distinct themes in that doc
-        #    contributes +1 to BOTH (a,b) and (b,a) — same convention as the
-        #    notebook in cells 27-28.
-        themes_ordered = sorted(theme_doc_counts.keys())
-        theme_idx = {t: i for i, t in enumerate(themes_ordered)}
-        n_themes = len(themes_ordered)
-        co_matrix = [[0] * n_themes for _ in range(n_themes)]
-        for themes_in_doc in doc_to_themes.values():
-            themes_list = list(themes_in_doc)
-            for t1 in themes_list:
-                for t2 in themes_list:
-                    if t1 != t2:
-                        co_matrix[theme_idx[t1]][theme_idx[t2]] += 1
-
-        result = {
-            "id": job_id,
-            "status": "completed",
-            "topics": topics,
-            "totalDocuments": total_documents,
-            "filteredDocuments": filtered_count,
-            "filteredReviews": filtered_reviews,
-            "totalLabels": len(all_labels),
-            "clusteringLevels": cluster_result,
-            "query": query,
-            # Prevalence visualization payload:
-            "themesOrdered": themes_ordered,
-            "themeLabelCounts": theme_label_counts,
-            "themeDocCounts": theme_doc_counts,
-            "coOccurrenceMatrix": co_matrix,
-        }
+        result = build_pipeline_result(
+            gen_result=gen_result,
+            cluster_result=cluster_result,
+            documents=documents,
+            query=query,
+            relevance_scores=relevance_scores,
+            job_id=job_id,
+        )
+        # filter_by_relevance already replaced `documents` with the kept subset,
+        # so totalDocuments would reflect the filtered count — restore the true
+        # corpus size so the UI summary stays honest.
+        result["totalDocuments"] = total_documents
+        result["filteredDocuments"] = filtered_count
 
         jobs[job_id]["status"] = "completed"
         jobs[job_id]["result"] = result
