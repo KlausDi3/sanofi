@@ -296,6 +296,23 @@ def run_mock_pipeline(job_id: str, documents: dict, query: str = None):
                 "documentTexts": {did: documents[did] for did in doc_slice},
             })
 
+        # Prevalence + co-occurrence so the Labels/Docs/Co-occurrence tabs
+        # aren't disabled in mock mode (the real pipeline builds these from
+        # the cluster tree; here we synthesize plausible numbers).
+        theme_names = [t["name"] for t in topics]
+        themes_ordered = sorted(theme_names)
+        theme_label_counts = {t["name"]: len(t["labels"]) for t in topics}
+        theme_doc_counts = {t["name"]: t["fileCount"] for t in topics}
+
+        n = len(themes_ordered)
+        co_matrix = [[0] * n for _ in range(n)]
+        for i in range(n):
+            for j in range(i + 1, n):
+                pair_count = random.randint(2, max(2, min(theme_doc_counts[themes_ordered[i]],
+                                                          theme_doc_counts[themes_ordered[j]])))
+                co_matrix[i][j] = pair_count
+                co_matrix[j][i] = pair_count
+
         result = {
             "id": job_id,
             "status": "completed",
@@ -306,6 +323,10 @@ def run_mock_pipeline(job_id: str, documents: dict, query: str = None):
             "totalLabels": sum(len(t["labels"]) for t in topics),
             "clusteringLevels": None,
             "query": query,
+            "themesOrdered": themes_ordered,
+            "themeLabelCounts": theme_label_counts,
+            "themeDocCounts": theme_doc_counts,
+            "coOccurrenceMatrix": co_matrix,
             "mock": True,
         }
         jobs[job_id]["status"] = "completed"
