@@ -1,0 +1,25 @@
+{
+    "Recommendations": [
+        "Family and Personal Recommendations",
+        "Personal Recommendations",
+        "Patient Experience and Trust",
+        "Professional Referrals"
+    ],
+    "Referrals from Healthcare Providers": [
+        "Physician Referrals",
+        "Emergency and Urgent Care Referrals",
+        "Direct Referrals"
+    ],
+    "Self-Initiated Referrals": [
+        "Self-Referral and Research",
+        "Personal Initiatives"
+    ],
+    "Consultations and Opinions": [
+        "Second Opinions and Consultations",
+        "Second Opinions"
+    ],
+    "Miscellaneous": [
+        "Miscellaneous Referrals",
+        "Previous Relationships"
+    ]
+}

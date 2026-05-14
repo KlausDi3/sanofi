@@ -48,6 +48,11 @@ export interface AnalysisResult {
   totalLabels: number;
   clusteringLevels?: Record<string, string[]>[];
   query?: string;
+  // Prevalence visualization payload (added in Phase 2):
+  themesOrdered?: string[];                       // axis order for matrix
+  themeLabelCounts?: Record<string, number>;      // bar chart A: # raw labels per theme
+  themeDocCounts?: Record<string, number>;        // bar chart B: # documents per theme
+  coOccurrenceMatrix?: number[][];                // heatmap: symmetric N×N, diag=0
 }
 
 export interface FileUpload {

@@ -65,9 +65,10 @@ def get_available_datasources() -> list[dict]:
         for fname in os.listdir(DATA_DIR):
             if fname.endswith('.csv'):
                 fpath = os.path.join(DATA_DIR, fname)
-                # Count rows
-                with open(fpath, 'r') as f:
-                    row_count = sum(1 for _ in f) - 1  # minus header
+                # Count rows via the CSV parser — `sum(1 for _ in f)` would
+                # over-count when text cells contain embedded newlines.
+                with open(fpath, 'r', encoding='utf-8') as f:
+                    row_count = sum(1 for _ in csv.DictReader(f))
                 sources.append({
                     "id": fname.replace('.csv', ''),
                     "name": fname.replace('_', ' ').replace('.csv', '').title(),
@@ -75,6 +76,9 @@ def get_available_datasources() -> list[dict]:
                     "documentCount": row_count,
                     "path": fpath,
                 })
+    # Sort by document count so the dropdown shows 10 < 20 < 50 < 100 instead
+    # of the lexical order that would put 100 before 20.
+    sources.sort(key=lambda s: s["documentCount"])
     return sources
 
 
@@ -202,6 +206,50 @@ Format:
 """
 
 
+def chain_cluster_iterations(cluster_iters: list[dict]) -> dict[str, str]:
+    """Chain multi-iteration cluster output into a raw_label → final_theme map.
+
+    `cluster_iters[i]` is dict {parent: [children]}.  At iter_0 the children
+    are RAW labels; at iter_N>0 the children are iter_{N-1} parents.  This
+    walks the chain so every raw label maps to its top-level theme name.
+
+    Returns a dict keyed by lowercase raw label, with values being the
+    original-case theme name from the last iteration's keys (so the UI
+    can display them with their real casing).
+    """
+    if not cluster_iters:
+        return {}
+
+    # Per-iter reverse map (child → parent) + case-preservation map for parents
+    reverse_maps: list[dict[str, str]] = []
+    case_maps: list[dict[str, str]] = []
+    for cluster_map in cluster_iters:
+        rmap, cmap = {}, {}
+        for parent, children in cluster_map.items():
+            cmap[parent.lower()] = parent
+            for child in children:
+                rmap[child.lower()] = parent.lower()
+        reverse_maps.append(rmap)
+        case_maps.append(cmap)
+
+    # Chain through iterations: raw_label → iter_0 parent → ... → iter_N parent
+    label_to_final_lower = dict(reverse_maps[0])
+    for next_rmap in reverse_maps[1:]:
+        for raw in list(label_to_final_lower.keys()):
+            cur = label_to_final_lower[raw]
+            if cur in next_rmap:
+                label_to_final_lower[raw] = next_rmap[cur]
+            else:
+                # parent disappeared in later iter — drop (matches notebook behaviour)
+                label_to_final_lower.pop(raw)
+
+    final_case_map = case_maps[-1]
+    return {
+        raw: final_case_map.get(theme_lower, theme_lower)
+        for raw, theme_lower in label_to_final_lower.items()
+    }
+
+
 def run_hicode_pipeline(job_id: str, documents: dict, coding_goal: str, background: str, model_name: str, query: str = None):
     """Run the full HICode pipeline with optional embedding-based filtering."""
     try:
@@ -266,16 +314,17 @@ def run_hicode_pipeline(job_id: str, documents: dict, coding_goal: str, backgrou
         # Step 3: Build response
         final_clusters = cluster_result[-1] if cluster_result else {}
 
-        # Create label to theme mapping
-        label_to_theme = {}
-        for theme, labels in final_clusters.items():
-            for label in labels:
-                label_to_theme[label.lower()] = theme
+        # Walk the FULL iteration chain so raw labels (not just iter_{-2} parents)
+        # find their final theme. Without this, multi-iter runs would lose most
+        # labels because label_to_theme keyed by iter_{N-1} parents won't match
+        # raw labels produced by generation.
+        label_to_theme = chain_cluster_iterations(cluster_result or [])
 
         # Build topics with associated documents and their texts
         topics = []
         theme_docs: dict[str, set] = {}
         theme_labels: dict[str, set] = {}
+        doc_to_themes: dict[str, set] = {}  # for prevalence / co-occurrence aggregation
 
         for doc_id, doc_data in gen_result.items():
             for annotation in doc_data.get("LLM_Annotation", []):
@@ -284,6 +333,7 @@ def run_hicode_pipeline(job_id: str, documents: dict, coding_goal: str, backgrou
                     if theme:
                         theme_docs.setdefault(theme, set()).add(doc_id)
                         theme_labels.setdefault(theme, set()).add(label)
+                        doc_to_themes.setdefault(doc_id, set()).add(theme)
 
         for idx, (theme_name, labels) in enumerate(final_clusters.items()):
             doc_ids = list(theme_docs.get(theme_name, []))[:20]
@@ -319,6 +369,36 @@ def run_hicode_pipeline(job_id: str, documents: dict, coding_goal: str, backgrou
                     "score": round(score, 4),
                 })
 
+        # ── Prevalence aggregations (for the 3 visualization charts) ──
+        # 1) Label count per theme: how many raw labels rolled up into each theme.
+        #    Counts every raw label that has a path in the cluster tree (matches
+        #    notebook cell 21: pd.DataFrame(label_map).theme.value_counts()).
+        #    This is "cluster-tree structure" not "doc-allocated" — a raw label
+        #    is counted even if it wasn't actually assigned to any doc.
+        theme_label_counts: dict[str, int] = {}
+        for _raw_label, theme_name in label_to_theme.items():
+            theme_label_counts[theme_name] = theme_label_counts.get(theme_name, 0) + 1
+
+        # 2) Document count per theme: how many distinct docs contain each theme
+        theme_doc_counts: dict[str, int] = {
+            theme: len(docs) for theme, docs in theme_docs.items()
+        }
+
+        # 3) Theme × theme co-occurrence matrix (symmetric, diagonal = 0).
+        #    For every doc, every unordered pair of distinct themes in that doc
+        #    contributes +1 to BOTH (a,b) and (b,a) — same convention as the
+        #    notebook in cells 27-28.
+        themes_ordered = sorted(theme_doc_counts.keys())
+        theme_idx = {t: i for i, t in enumerate(themes_ordered)}
+        n_themes = len(themes_ordered)
+        co_matrix = [[0] * n_themes for _ in range(n_themes)]
+        for themes_in_doc in doc_to_themes.values():
+            themes_list = list(themes_in_doc)
+            for t1 in themes_list:
+                for t2 in themes_list:
+                    if t1 != t2:
+                        co_matrix[theme_idx[t1]][theme_idx[t2]] += 1
+
         result = {
             "id": job_id,
             "status": "completed",
@@ -329,6 +409,11 @@ def run_hicode_pipeline(job_id: str, documents: dict, coding_goal: str, backgrou
             "totalLabels": len(all_labels),
             "clusteringLevels": cluster_result,
             "query": query,
+            # Prevalence visualization payload:
+            "themesOrdered": themes_ordered,
+            "themeLabelCounts": theme_label_counts,
+            "themeDocCounts": theme_doc_counts,
+            "coOccurrenceMatrix": co_matrix,
         }
 
         jobs[job_id]["status"] = "completed"

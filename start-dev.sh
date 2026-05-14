@@ -13,7 +13,7 @@ if [ -z "$OPENAI_API_KEY" ]; then
 fi
 
 # Start backend (FastAPI)
-echo "Starting Backend (FastAPI) on http://localhost:8000..."
+echo "Starting Backend (FastAPI) on http://localhost:8002..."
 cd hicode-api
 if [ ! -d "venv" ]; then
     echo "Creating virtual environment..."
@@ -23,7 +23,7 @@ if [ ! -d "venv" ]; then
 else
     source venv/bin/activate
 fi
-python main.py &
+PORT=8002 python main.py &
 BACKEND_PID=$!
 cd ..
 
@@ -31,17 +31,17 @@ cd ..
 sleep 2
 
 # Start frontend (Next.js)
-echo "Starting Frontend (Next.js) on http://localhost:3000..."
+echo "Starting Frontend (Next.js) on http://localhost:3002..."
 cd hicode-interface
-npm run dev &
+PORT=3002 npm run dev &
 FRONTEND_PID=$!
 cd ..
 
 echo ""
 echo "=========================================="
 echo "HICode is running!"
-echo "  Frontend: http://localhost:3000"
-echo "  Backend:  http://localhost:8000"
+echo "  Frontend: http://localhost:3002"
+echo "  Backend:  http://localhost:8002"
 echo "=========================================="
 echo ""
 echo "Press Ctrl+C to stop all servers"

@@ -3,7 +3,11 @@
 import { useState } from "react";
 import { AnalysisResult } from "@/types/analysis";
 import { TopicItem } from "./TopicItem";
-import { FileText, Filter, ChevronDown, ChevronRight } from "lucide-react";
+import { PrevalenceBarChart } from "./PrevalenceBarChart";
+import { CoOccurrenceHeatmap } from "./CoOccurrenceHeatmap";
+import { FileText, Filter, ChevronDown, ChevronRight, List, BarChart3, Grid3x3 } from "lucide-react";
+
+type ResultView = "topics" | "labelsPerTheme" | "docsPerTheme" | "coOccurrence";
 
 interface ResultsPanelProps {
   results: AnalysisResult | null;
@@ -12,9 +16,19 @@ interface ResultsPanelProps {
 export function ResultsPanel({ results }: ResultsPanelProps) {
   const topicCount = results?.topics.length || 0;
   const [showFiltered, setShowFiltered] = useState(false);
+  const [view, setView] = useState<ResultView>("topics");
 
   const filteredReviews = results?.filteredReviews || [];
   const hasFilter = filteredReviews.length > 0;
+
+  const hasPrevalenceData =
+    !!results?.themeLabelCounts &&
+    !!results?.themeDocCounts &&
+    Object.keys(results?.themeLabelCounts || {}).length > 0;
+  const hasMatrixData =
+    !!results?.coOccurrenceMatrix &&
+    !!results?.themesOrdered &&
+    results.themesOrdered.length > 0;
 
   return (
     <div className="h-full bg-[var(--card)] border border-[var(--border)] rounded-none shadow-sm flex flex-col">
@@ -106,23 +120,83 @@ export function ResultsPanel({ results }: ResultsPanelProps) {
               </div>
             )}
 
-            {/* Topics Header */}
-            <div className="flex items-center justify-between mb-4">
-              <span className="font-primary text-sm font-semibold text-[var(--foreground)]">
-                Discovered Topics
-              </span>
+            {/* View switcher tabs */}
+            <div className="flex gap-1 mb-4 border-b border-[var(--border)]">
+              <TabButton
+                active={view === "topics"}
+                onClick={() => setView("topics")}
+                icon={<List className="w-3.5 h-3.5" />}
+                label="Topics"
+              />
+              <TabButton
+                active={view === "labelsPerTheme"}
+                onClick={() => setView("labelsPerTheme")}
+                disabled={!hasPrevalenceData}
+                icon={<BarChart3 className="w-3.5 h-3.5" />}
+                label="Labels / Theme"
+              />
+              <TabButton
+                active={view === "docsPerTheme"}
+                onClick={() => setView("docsPerTheme")}
+                disabled={!hasPrevalenceData}
+                icon={<BarChart3 className="w-3.5 h-3.5" />}
+                label="Docs / Theme"
+              />
+              <TabButton
+                active={view === "coOccurrence"}
+                onClick={() => setView("coOccurrence")}
+                disabled={!hasMatrixData}
+                icon={<Grid3x3 className="w-3.5 h-3.5" />}
+                label="Co-occurrence"
+              />
             </div>
 
-            {/* Topics List */}
-            <div className="space-y-3">
-              {results.topics.map((topic, index) => (
-                <TopicItem
-                  key={topic.id}
-                  topic={topic}
-                  defaultExpanded={index === 0}
-                />
-              ))}
-            </div>
+            {/* View body */}
+            {view === "topics" && (
+              <>
+                <div className="flex items-center justify-between mb-4">
+                  <span className="font-primary text-sm font-semibold text-[var(--foreground)]">
+                    Discovered Topics
+                  </span>
+                </div>
+                <div className="space-y-3">
+                  {results.topics.map((topic, index) => (
+                    <TopicItem
+                      key={topic.id}
+                      topic={topic}
+                      defaultExpanded={index === 0}
+                    />
+                  ))}
+                </div>
+              </>
+            )}
+
+            {view === "labelsPerTheme" && hasPrevalenceData && (
+              <PrevalenceBarChart
+                title="Label Prevalence by Theme"
+                description="How many raw labels rolled up into each final theme."
+                data={results.themeLabelCounts!}
+                xAxisLabel="# labels"
+                yAxisLabel="labels"
+              />
+            )}
+
+            {view === "docsPerTheme" && hasPrevalenceData && (
+              <PrevalenceBarChart
+                title="Document Prevalence by Theme"
+                description="How many distinct documents contain each theme (a doc tagged with 3 themes counts once for each)."
+                data={results.themeDocCounts!}
+                xAxisLabel="# documents"
+                yAxisLabel="documents"
+              />
+            )}
+
+            {view === "coOccurrence" && hasMatrixData && (
+              <CoOccurrenceHeatmap
+                themes={results.themesOrdered!}
+                matrix={results.coOccurrenceMatrix!}
+              />
+            )}
           </>
         ) : (
           <div className="flex flex-col items-center justify-center py-12 text-center">
@@ -147,5 +221,38 @@ export function ResultsPanel({ results }: ResultsPanelProps) {
         </div>
       )}
     </div>
+  );
+}
+
+
+function TabButton({
+  active,
+  onClick,
+  disabled = false,
+  icon,
+  label,
+}: {
+  active: boolean;
+  onClick: () => void;
+  disabled?: boolean;
+  icon: React.ReactNode;
+  label: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className={`flex items-center gap-1.5 px-3 py-2 -mb-px border-b-2 font-primary text-xs font-medium transition-colors ${
+        active
+          ? "border-[var(--primary)] text-[var(--primary)]"
+          : disabled
+            ? "border-transparent text-[var(--muted-foreground)]/50 cursor-not-allowed"
+            : "border-transparent text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
+      }`}
+    >
+      {icon}
+      {label}
+    </button>
   );
 }

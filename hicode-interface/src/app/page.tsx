@@ -11,6 +11,7 @@ import { analyzeCorpus, parseFiles, estimateDocumentCount } from "@/lib/hicode";
 export default function AnalysisPage() {
   const [files, setFiles] = useState<File[]>([]);
   const [query, setQuery] = useState("What patterns relate to doctor-patient communication?");
+  const [background, setBackground] = useState("");
   const [connectedDatasource, setConnectedDatasource] = useState<Datasource | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [progressMessage, setProgressMessage] = useState<string | null>(null);
@@ -37,6 +38,8 @@ export default function AnalysisPage() {
 
       const codingGoal = "understanding the themes and patterns in the corpus";
 
+      const bg = background.trim() || undefined;
+
       if (connectedDatasource) {
         // Use backend datasource
         result = await analyzeCorpus(
@@ -46,6 +49,7 @@ export default function AnalysisPage() {
           },
           {
             codingGoal,
+            background: bg,
             onProgress: (status) => {
               setProgressMessage(status.progress);
             },
@@ -63,6 +67,7 @@ export default function AnalysisPage() {
           },
           {
             codingGoal,
+            background: bg,
             onProgress: (status) => {
               setProgressMessage(status.progress);
             },
@@ -142,6 +147,8 @@ export default function AnalysisPage() {
                 onFilesChange={setFiles}
                 query={query}
                 onQueryChange={setQuery}
+                background={background}
+                onBackgroundChange={setBackground}
                 connectedDatasource={connectedDatasource}
                 onDatasourceConnect={setConnectedDatasource}
               />
