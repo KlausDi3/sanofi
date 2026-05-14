@@ -307,10 +307,15 @@ def build_pipeline_result(
             "documentTexts": doc_texts,
         })
 
-    total_labels = 0
+    # Count unique raw labels across the whole corpus — same definition as
+    # the original process_labels() helper (flatten + set), so the summary
+    # bar's "N labels generated" matches what the real pipeline shows.
+    unique_labels = set()
     for doc_data in gen_result.values():
         for annotation in doc_data.get("LLM_Annotation", []):
-            total_labels += len(annotation.get("label", []))
+            for lab in annotation.get("label", []):
+                unique_labels.add(lab)
+    total_labels = len(unique_labels)
 
     filtered_reviews = []
     if relevance_scores:
