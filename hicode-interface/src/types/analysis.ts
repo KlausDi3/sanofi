@@ -55,6 +55,78 @@ export interface AnalysisResult {
   coOccurrenceMatrix?: number[][];                // heatmap: symmetric N×N, diag=0
 }
 
+// ---- Theme x metadata breakdown (GET /api/results/{job_id}/metadata) ----
+// The backend does all the aggregation; these types describe what it hands
+// over ready to plot. See hicode-api/src/metadata_analysis.py.
+
+export interface ColumnTypes {
+  categorical: string[];
+  /** Categorical too, but past the distinct-value cutoff — charts are truncated. */
+  highCardinality: string[];
+  continuous: string[];
+  excluded: { column: string; reason: string }[];
+}
+
+/** One theme's distribution across a categorical column's values. */
+export interface ThemeBreakdown {
+  theme: string;
+  /** Documents behind this row. Small values make the percentages unreliable. */
+  n: number;
+  counts: Record<string, number>;
+  pct: Record<string, number>;
+}
+
+/** One category value's distribution across themes. */
+export interface CategoryBreakdown {
+  category: string;
+  n: number;
+  counts: Record<string, number>;
+  pct: Record<string, number>;
+}
+
+/** Five-number summary of a continuous column within one theme. */
+export interface ThemeDistribution {
+  theme: string;
+  n: number;
+  min: number;
+  q1: number;
+  median: number;
+  q3: number;
+  max: number;
+  mean: number;
+  outliers: number[];
+}
+
+export interface CategoricalPanel {
+  column: string;
+  type: "categorical";
+  highCardinality: boolean;
+  /** Categories folded into "Other". Non-zero means the chart is partial. */
+  foldedCategories: number;
+  themes: string[];
+  categories: string[];
+  byTheme: ThemeBreakdown[];
+  byCategory: CategoryBreakdown[];
+}
+
+export interface ContinuousPanel {
+  column: string;
+  type: "continuous";
+  themes: string[];
+  byTheme: ThemeDistribution[];
+}
+
+export type MetadataPanel = CategoricalPanel | ContinuousPanel;
+
+export interface MetadataBreakdown {
+  jobId: string;
+  query?: string;
+  columnTypes: ColumnTypes;
+  panels: MetadataPanel[];
+  /** Set when there is nothing to show for a legitimate reason, not an error. */
+  unavailableReason?: string;
+}
+
 export interface FileUpload {
   file: File;
   name: string;

@@ -28,7 +28,7 @@
 | 02 | [后端 metadata 分析 + API 端点](02-backend-metadata-analysis.md) | ✅ 完成 | `411177c` |
 | 03 | [数据集与数据治理](03-dataset-and-governance.md) | ✅ 完成 | 100 条分层样本 |
 | 04 | [前端路由拆分](04-frontend-routing.md) | ✅ 完成 | `/analysis` + `/results` |
-| 05 | [前端 Results 页 + metadata 图表](05-frontend-results-page.md) | ⬜ 未开始 | |
+| 05 | [前端 Results 页 + metadata 图表](05-frontend-results-page.md) | ✅ 完成 | 10 个面板 |
 | 06 | [结果下载（JSON + PDF）](06-download.md) | ⬜ 未开始 | |
 | 07 | [效率优化：放大到 1000 条](07-efficiency.md) | ⬜ 下一轮 | |
 
@@ -44,7 +44,7 @@
 
 ## 下一步
 
-05 → 06。05 是最大的一块（约 2 天），前置的 04 已完成；06 独立，可随时插入。
+06 结果下载（约 0.5 天），本轮范围内最后一项。之后 07 效率优化留到下一轮。
 
 ---
 

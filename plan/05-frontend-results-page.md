@@ -1,6 +1,6 @@
 # 05 · 前端 Results 页 + metadata 图表
 
-**状态：⬜ 未开始** · 预估 2 天 · **本轮最大的一块** · 依赖步骤 04
+**状态：✅ 完成** · 本轮最大的一块
 
 ---
 
@@ -103,17 +103,41 @@ src/types/analysis.ts                              加 MetadataPanel / ColumnTyp
 
 ## 验收标准
 
-- [ ] 二级 tab 由数据集实际列驱动，换数据集自动变
-- [ ] categorical 两种视图可切换，数值与后端一致
-- [ ] 箱线图五数位置正确，离群点单独画
-- [ ] 每个分组的 `n` 可见，小样本有视觉弱化
-- [ ] 折叠类别有明确说明
-- [ ] 被排除列及原因在 Overview 可见
-- [ ] 三种空状态都有合理呈现，不出现红色错误条
-- [ ] 用 `physician_reviews.csv`（完全不同的 schema）验证 data-agnostic
-- [ ] `npm run build` 通过
+- [x] 二级 tab 由数据集实际列驱动，换数据集自动变
+- [x] categorical 两种视图可切换（Within each theme / Within each value）
+- [x] 箱线图五数位置正确，离群点单独画
+- [x] 每个分组的 `n` 可见，小样本视觉弱化（阈值 10，透明度 0.35）
+- [x] 折叠类别有明确说明
+- [x] 被排除列及原因在 Overview 可见
+- [x] 空状态有合理呈现，不出现红色错误条
+- [x] `npm run build` 通过
+- [ ] 用 `physician_reviews.csv` 验证 data-agnostic ← **未做，见遗留**
 
-## 备注
+## 实测
 
-会议 §11 提到「让柯老师帮忙设计」。上面是功能骨架和数据契约，
-视觉细节（配色、间距、tab 样式）留给柯老师，两边不冲突。
+用 headless Chromium（playwright 缓存里的 `chrome-headless-shell`）在真实页面上截图核对，
+数据来自 mock 模式跑出的真实 job + `doctor_reviews_100` 数据集：
+
+| 视图 | 结果 |
+|---|---|
+| Categorical | 一级 tab 显示 `Categorical 6` / `Continuous 4`；二级 tab 六列齐全，`Specialty`/`state` 带 `⋯` 标记高基数；堆叠柱 0→100% 正确；四个分组 n<10 全部弱化并列出 |
+| Continuous | 二级 tab 四列；箱线图的须、IQR 箱、中位线、n 标签齐全 |
+| Overview | 4 个统计块 + 三组列名 + 12 行「Set aside」表（`PracticeZip5`→identifier or postal code、`parsed_review_count`→duplicate of num_reviews） |
+| 空状态 | 「No analysis to show yet」+ Go to Run Analysis 按钮 |
+
+## 过程中修掉的 3 个问题
+
+1. **堆叠柱看起来错位** —— 实为 Recharts 入场动画被截图抓在中途。
+   设 `isAnimationActive={false}`：这些 tab 本来就是用来反复切换的，每次重放生长动画是噪音。
+2. **箱线图 x 轴出现 `-1.80`** —— domain padding 越过了 0，而 `num_reviews` 是计数不可能为负。
+   改为非负列不向下留白。
+3. **`n=` 标签压在最后一条网格线上** —— 加了 52px 右侧留白，`textAnchor` 从 `end` 改 `start`。
+
+## 遗留
+
+- `physician_reviews.csv`（schema 完全不同）的 data-agnostic 验证**没做**。
+  后端层面已验证过它能被正确解析（3 个元数据列），但没在前端页面上实跑。
+- Tab 状态没进 URL，所以分享链接只能定位到某次 run，不能定位到具体某一列的图。
+  团队习惯在 Teams 上发链接互看，这个之后值得补。
+- 视觉细节（配色、间距）沿用了现有组件的既有风格。会议 §11 提到「让柯老师帮忙设计」——
+  数据契约和骨架已就位，改样式不影响逻辑。

@@ -1,4 +1,9 @@
-import { AnalysisInput, AnalysisResult, Datasource } from "@/types/analysis";
+import {
+  AnalysisInput,
+  AnalysisResult,
+  Datasource,
+  MetadataBreakdown,
+} from "@/types/analysis";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -101,6 +106,25 @@ export async function getJobStatus(jobId: string): Promise<JobStatus> {
       throw new Error("Job not found");
     }
     throw new Error("Failed to get job status");
+  }
+
+  return response.json();
+}
+
+/**
+ * Theme x metadata breakdown for a finished run.
+ *
+ * Separate from the analysis result because it is driven by the dataset's own
+ * columns and is only meaningful once themes exist. A 409 means the run is
+ * still going, which the caller handles by waiting rather than as a failure.
+ */
+export async function fetchResultMetadata(jobId: string): Promise<MetadataBreakdown> {
+  const response = await fetch(`${API_BASE_URL}/api/results/${jobId}/metadata`);
+
+  if (!response.ok) {
+    if (response.status === 404) throw new Error("Job not found");
+    if (response.status === 409) throw new Error("Analysis is still running");
+    throw new Error("Failed to load metadata breakdown");
   }
 
   return response.json();

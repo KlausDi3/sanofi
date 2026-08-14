@@ -4,16 +4,17 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Microscope, Loader2, BarChart3 } from "lucide-react";
 import { Sidebar } from "@/components/Sidebar/Sidebar";
-import { AnalysisResult } from "@/types/analysis";
-import { getJobStatus } from "@/lib/hicode";
+import { AnalysisResult, MetadataBreakdown } from "@/types/analysis";
+import { fetchResultMetadata, getJobStatus } from "@/lib/hicode";
 import { recallJobId } from "@/lib/jobSession";
+import { MetadataPanelTabs } from "@/components/Metadata/MetadataPanelTabs";
 
 type PageState =
   | { kind: "loading" }
   | { kind: "no-run" }
   | { kind: "running"; progress: string | null }
   | { kind: "failed"; message: string }
-  | { kind: "ready"; result: AnalysisResult };
+  | { kind: "ready"; result: AnalysisResult; breakdown: MetadataBreakdown };
 
 export default function ResultsPage() {
   const [state, setState] = useState<PageState>({ kind: "loading" });
@@ -26,23 +27,34 @@ export default function ResultsPage() {
     }
 
     let cancelled = false;
-    getJobStatus(jobId)
-      .then((status) => {
+
+    (async () => {
+      try {
+        const status = await getJobStatus(jobId);
         if (cancelled) return;
-        if (status.status === "completed" && status.result) {
-          setState({ kind: "ready", result: status.result });
-        } else if (status.status === "error") {
+
+        if (status.status === "error") {
           setState({ kind: "failed", message: status.error || "Analysis failed" });
-        } else {
-          setState({ kind: "running", progress: status.progress });
+          return;
         }
-      })
-      .catch(() => {
-        // The id we remembered points at a run the backend no longer has.
-        // That is the same situation as never having run — say so plainly
-        // rather than showing an error the user cannot act on.
+        if (status.status !== "completed" || !status.result) {
+          setState({ kind: "running", progress: status.progress });
+          return;
+        }
+
+        // Only fetched once the run is known to be complete — the endpoint
+        // returns 409 otherwise, and that is a wait, not a failure.
+        const breakdown = await fetchResultMetadata(jobId);
+        if (!cancelled) {
+          setState({ kind: "ready", result: status.result, breakdown });
+        }
+      } catch {
+        // The remembered id points at a run the backend no longer has (it
+        // keeps them in memory). That is the same situation as never having
+        // run — say so plainly rather than showing an unactionable error.
         if (!cancelled) setState({ kind: "no-run" });
-      });
+      }
+    })();
 
     return () => {
       cancelled = true;
@@ -97,7 +109,9 @@ export default function ResultsPage() {
             />
           )}
 
-          {state.kind === "ready" && <ReadyPlaceholder result={state.result} />}
+          {state.kind === "ready" && (
+            <Ready result={state.result} breakdown={state.breakdown} />
+          )}
         </div>
       </main>
     </div>
@@ -148,14 +162,17 @@ function EmptyState({
   );
 }
 
-/**
- * Placeholder until step 05 builds the real panels. It already reads from the
- * restored run, so the routing and hand-off are verifiable now rather than
- * only once the charts exist.
- */
-function ReadyPlaceholder({ result }: { result: AnalysisResult }) {
+function Ready({
+  result,
+  breakdown,
+}: {
+  result: AnalysisResult;
+  breakdown: MetadataBreakdown;
+}) {
   return (
     <div className="space-y-4">
+      {/* Which run this is. Without it the page is a set of charts with no
+          provenance, and the question drives what the themes even are. */}
       <div className="flex flex-wrap items-center gap-4 px-5 py-4 bg-[var(--secondary)] border border-[var(--border)] rounded-lg">
         <span className="px-2.5 py-1 bg-[var(--success)] text-[var(--success-foreground)] font-secondary text-xs font-medium rounded-full">
           {result.topics.length} theme{result.topics.length !== 1 ? "s" : ""}
@@ -170,14 +187,19 @@ function ReadyPlaceholder({ result }: { result: AnalysisResult }) {
         )}
       </div>
 
-      <div className="px-8 py-12 bg-[var(--card)] border border-dashed border-[var(--border)] rounded-lg text-center">
-        <p className="font-primary text-sm font-medium text-[var(--foreground)]">
-          Metadata panels land here
-        </p>
-        <p className="font-secondary text-sm text-[var(--muted-foreground)] mt-1">
-          Per-column tabs backed by <code>/api/results/{result.id}/metadata</code>
-        </p>
-      </div>
+      {breakdown.panels.length === 0 ? (
+        <div className="px-8 py-12 bg-[var(--card)] border border-[var(--border)] rounded-lg text-center">
+          <p className="font-primary text-sm font-medium text-[var(--foreground)]">
+            No metadata to break these themes down by
+          </p>
+          <p className="font-secondary text-sm text-[var(--muted-foreground)] mt-1 max-w-lg mx-auto">
+            {breakdown.unavailableReason ||
+              "This dataset has no columns beyond the id and text that can be charted."}
+          </p>
+        </div>
+      ) : (
+        <MetadataPanelTabs breakdown={breakdown} result={result} />
+      )}
     </div>
   );
 }
