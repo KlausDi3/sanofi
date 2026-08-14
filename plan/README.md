@@ -27,7 +27,7 @@
 | 01 | [后端数据层：列名自适应 + 保留 metadata](01-backend-data-layer.md) | ✅ 完成 | `411177c` |
 | 02 | [后端 metadata 分析 + API 端点](02-backend-metadata-analysis.md) | ✅ 完成 | `411177c` |
 | 03 | [数据集与数据治理](03-dataset-and-governance.md) | ✅ 完成 | 100 条分层样本 |
-| 04 | [前端路由拆分](04-frontend-routing.md) | ⬜ 未开始 | |
+| 04 | [前端路由拆分](04-frontend-routing.md) | ✅ 完成 | `/analysis` + `/results` |
 | 05 | [前端 Results 页 + metadata 图表](05-frontend-results-page.md) | ⬜ 未开始 | |
 | 06 | [结果下载（JSON + PDF）](06-download.md) | ⬜ 未开始 | |
 | 07 | [效率优化：放大到 1000 条](07-efficiency.md) | ⬜ 下一轮 | |
@@ -44,7 +44,7 @@
 
 ## 下一步
 
-04 → 05 → 06。其中 05 是最大的一块（约 2 天），04 是它的前置；06 独立，可随时插入。
+05 → 06。05 是最大的一块（约 2 天），前置的 04 已完成；06 独立，可随时插入。
 
 ---
 

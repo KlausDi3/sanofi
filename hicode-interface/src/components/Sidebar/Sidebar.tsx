@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { usePathname } from "next/navigation";
 import {
   LayoutDashboard,
   Database,
@@ -11,17 +12,29 @@ import {
   BrainCircuit,
 } from "lucide-react";
 import { NavItem } from "./NavItem";
+import { recallJobId, withJobId } from "@/lib/jobSession";
 
+// `href: undefined` marks an entry that has no page behind it yet. They stay
+// listed because they are the agreed information architecture, but they render
+// as disabled rather than as working links.
 const navItems = [
-  { icon: LayoutDashboard, label: "Dashboard", id: "dashboard" },
-  { icon: Database, label: "Data Sources", id: "data" },
-  { icon: Microscope, label: "Run Analysis", id: "analysis" },
-  { icon: FileText, label: "Results", id: "results" },
-  { icon: Settings, label: "Settings", id: "settings" },
+  { icon: LayoutDashboard, label: "Dashboard", id: "dashboard", href: undefined },
+  { icon: Database, label: "Data Sources", id: "data", href: undefined },
+  { icon: Microscope, label: "Run Analysis", id: "analysis", href: "/analysis" },
+  { icon: FileText, label: "Results", id: "results", href: "/results" },
+  { icon: Settings, label: "Settings", id: "settings", href: undefined },
 ];
 
 export function Sidebar() {
-  const [activeItem, setActiveItem] = useState("dashboard");
+  const pathname = usePathname();
+  const [jobId, setJobId] = useState<string | null>(null);
+
+  // localStorage is not available during render on the server, so the job id
+  // is picked up after mount. Re-read on navigation: a run started on
+  // /analysis should be reachable from /results without a reload.
+  useEffect(() => {
+    setJobId(recallJobId());
+  }, [pathname]);
 
   return (
     <aside className="w-[280px] h-full bg-[var(--sidebar)] border-r border-[var(--sidebar-border)] flex flex-col">
@@ -46,8 +59,10 @@ export function Sidebar() {
               key={item.id}
               icon={item.icon}
               label={item.label}
-              active={activeItem === item.id}
-              onClick={() => setActiveItem(item.id)}
+              // Carry the current run across, so opening Results shows the run
+              // you just did instead of an empty page.
+              href={item.href ? withJobId(item.href, jobId) : undefined}
+              active={item.href ? pathname === item.href : false}
             />
           ))}
         </div>
