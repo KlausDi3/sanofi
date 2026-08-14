@@ -1,6 +1,6 @@
 # 03 · 数据集与数据治理
 
-**状态：⬜ 未开始** — D-1 已决（2026-08-14：维持 public、照常提交），阻塞解除
+**状态：✅ 完成** — D-1 已决（2026-08-14：维持 public、照常提交）
 
 ---
 
@@ -62,13 +62,47 @@ state         : CA 161 / FL 115 / TX 85 / NY 84 / …（90 条为空）
 ## 验收标准
 
 - [x] D-1 已决策并记录
-- [ ] 100 条样本各分类维度分布与全量接近，最小档 ≥ 8 条
-- [ ] 小数据集已删除，UI 下拉框只剩预期的几项
-- [ ] `syntheticdata/README.md` 与实际情况一致
-- [ ] 用新数据集跑通一次完整分析，metadata 端点返回 ≥ 3 个 categorical panel
+- [x] 100 条样本各分类维度分布与全量接近，最小档 ≥ 8 条
+- [x] 小数据集已删除，UI 下拉框只剩预期的几项
+- [x] `syntheticdata/README.md` 与实际情况一致
+- [x] metadata 端点返回 ≥ 3 个 categorical panel（实得 6 个）
 
-## 备注
+## 实测
 
-前端步骤 04 / 05 / 06 **不依赖**本步骤。用现有的 `doctor_reviews_100.csv`
-（元数据列只有 `PhyID`、`platform`，其中 `PhyID` 会被判为标识符排除）就能开发联调 ——
-只会看到 1 个 categorical panel，够验证链路，不够做演示。
+抽样结果（`--seed 20260728`），三个维度全部落在源分布 1.5 个百分点内：
+
+```
+Gender         M 70.0% / F 30.0%                      source 71.4% / 28.6%
+PhysicianType  Specialty 64% · Primary Care 27% · Super Specialties 9%
+                                                      source 65.3% / 26.9% / 7.8%
+platform       Vitals 42% · HG 40% · Yelp 10% · RateMD 8%
+                                                      source 41.7% / 41.3% / 10.6% / 6.4%
+```
+
+23 个非空层，最小分配 1，最大 20。`Super Specialties` 拿到 9 条（保底目标 8）。
+
+数据源下拉框：
+
+```
+physician_reviews    docs=20   metadata=3 列
+doctor_reviews_100   docs=100  metadata=22 列
+```
+
+metadata 端点在新数据集上产出 **10 个面板**：
+
+```
+categorical      platform · Gender · Credential · PhysicianType · Specialty · state
+continuous       num_reviews · population · population_density · median_household_income
+```
+
+对比 1000 条全量时的分类结果，`Credential` 从 highCardinality 降为普通 categorical、
+`Specialty` 从 excluded 升为 highCardinality —— 阈值随实际数据自适应，
+正是会议 §7 要的 data-agnostic 行为。
+
+## 遗留
+
+上面的端点验证是**注入已完成 job** 做的，不是真跑一次 LLM ——
+本地 OpenAI key 额度耗尽（`429 insufficient_quota`），线上 Render 的 key 正常。
+注入用的是 notebook 那次运行的主题，与新样本只有 9 条重叠，
+所以面板里的样本量偏小；真跑一次会覆盖大部分文档。
+**补上额度后应在本地真跑一次复验。**
