@@ -46,6 +46,19 @@ executor = ThreadPoolExecutor(max_workers=2)
 # Mock mode: skip OpenAI calls (auto-enabled when OPENAI_API_KEY is missing, or set USE_MOCK=true)
 USE_MOCK = os.environ.get("USE_MOCK", "").lower() == "true" or not os.environ.get("OPENAI_API_KEY")
 
+# Above this many documents, a run without a query is refused.
+#
+# A query routes the corpus through filter_by_relevance first, which caps what
+# reaches the LLM at RELEVANCE_TOP_K — so a 1000-document dataset with a
+# question labels 50 documents and finishes in about a minute. Without one,
+# every document is labelled: the research notebook measured 1.28 docs/sec, so
+# 1000 documents take ~13 minutes and blow past the client's 10-minute poll
+# timeout, after paying for the whole run first.
+REQUIRE_QUERY_ABOVE = 200
+
+# How many documents survive relevance filtering and reach label generation.
+RELEVANCE_TOP_K = 50
+
 # OpenAI client for embeddings (skip init in mock mode)
 try:
     openai_client = OpenAI() if not USE_MOCK else None
@@ -512,7 +525,7 @@ def run_hicode_pipeline(job_id: str, documents: dict, coding_goal: str, backgrou
             jobs[job_id]["updated_at"] = datetime.now().isoformat()
 
             documents, relevance_scores = filter_by_relevance(
-                documents, query, top_k=min(50, total_documents), threshold=0.25
+                documents, query, top_k=min(RELEVANCE_TOP_K, total_documents), threshold=0.25
             )
             filtered_count = len(documents)
 
@@ -632,6 +645,17 @@ async def start_analysis(request: AnalysisRequest, background_tasks: BackgroundT
 
     if not documents:
         raise HTTPException(status_code=400, detail="No documents provided. Either upload files or specify a datasource_id.")
+
+    # Refuse rather than accept a run that will time out after being paid for.
+    if len(documents) > REQUIRE_QUERY_ABOVE and not (request.query or "").strip():
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"This dataset has {len(documents)} documents. Enter a question so the "
+                f"most relevant ones can be selected — without it every document is sent "
+                f"to the model, which takes far longer than the request can wait."
+            ),
+        )
 
     job_id = str(uuid.uuid4())
     now = datetime.now().isoformat()

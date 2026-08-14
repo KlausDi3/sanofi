@@ -64,8 +64,12 @@ export function ResultsPanel({ results }: ResultsPanelProps) {
               {results.filteredDocuments !== undefined && results.filteredDocuments !== results.totalDocuments && (
                 <div className="flex items-center gap-1.5">
                   <Filter className="w-3.5 h-3.5 text-[var(--primary)]" />
+                  {/* "N filtered by relevance" never said whether N was kept or
+                      dropped, so a run that analysed 50 of 1000 documents read
+                      as though it had covered the corpus. */}
                   <span className="font-secondary text-xs text-[var(--primary)]">
-                    {results.filteredDocuments} filtered by relevance
+                    {results.filteredDocuments} of {results.totalDocuments} analysed
+                    {" "}(most relevant to your question)
                   </span>
                 </div>
               )}
