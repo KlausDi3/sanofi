@@ -12,6 +12,7 @@ from dotenv import load_dotenv
 from openai import OpenAI
 from fastapi import FastAPI, UploadFile, File, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 
 # Load environment variables from .env file
@@ -23,6 +24,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
 from label_generation import generate_labels, save_generation_output
 from label_clustering import cluster_labels_gpt, make_clustering_prompt, process_labels
 from metadata_analysis import infer_column_types, build_metadata_panels
+from report import render_report_html
 
 app = FastAPI(title="HICode API", version="1.0.0")
 
@@ -616,6 +618,7 @@ async def start_analysis(request: AnalysisRequest, background_tasks: BackgroundT
     """Start a new HICode analysis job."""
     documents = request.documents
     dataset = None
+    dataset_name = None
 
     # If datasource_id provided, load from backend storage
     if request.datasource_id:
@@ -625,6 +628,7 @@ async def start_analysis(request: AnalysisRequest, background_tasks: BackgroundT
             raise HTTPException(status_code=404, detail="Datasource not found")
         dataset = read_dataset(source["path"])
         documents = dataset["documents"]
+        dataset_name = source["name"]
 
     if not documents:
         raise HTTPException(status_code=400, detail="No documents provided. Either upload files or specify a datasource_id.")
@@ -643,6 +647,7 @@ async def start_analysis(request: AnalysisRequest, background_tasks: BackgroundT
         # Raw rows are kept out of the JobStatus response (they carry the full
         # metadata table) and read back only by the metadata endpoint.
         "dataset": dataset,
+        "dataset_name": dataset_name,
     }
 
     # Run pipeline in background
@@ -721,6 +726,33 @@ async def get_result_metadata(job_id: str):
         "columnTypes": column_types,
         "panels": panels,
     }
+
+
+@app.get("/api/results/{job_id}/report.html", response_class=HTMLResponse)
+async def get_result_report(job_id: str):
+    """A finished run as a printable document.
+
+    Served as HTML rather than a generated PDF: producing PDFs server-side
+    means shipping a headless browser or a rendering stack in the image, and
+    the browser's own print-to-PDF gets there with neither.
+    """
+    if job_id not in jobs:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    job = jobs[job_id]
+    if job["status"] != "completed" or not job.get("result"):
+        raise HTTPException(
+            status_code=409,
+            detail=f"Job is {job['status']}; the report is available once analysis completes",
+        )
+
+    return HTMLResponse(
+        render_report_html(
+            result=job["result"],
+            generated_at=datetime.now().strftime("%Y-%m-%d %H:%M"),
+            dataset_name=job.get("dataset_name"),
+        )
+    )
 
 
 @app.post("/api/upload")

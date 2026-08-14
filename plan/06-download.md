@@ -1,6 +1,6 @@
 # 06 · 结果下载（JSON + PDF）
 
-**状态：⬜ 未开始** · 预估 0.5 天 · 可与 04 / 05 并行
+**状态：✅ 完成**
 
 ---
 
@@ -59,14 +59,48 @@ GET /api/results/{job_id}/report.html
 
 ## 验收标准
 
-- [ ] JSON 下载内容与 `/api/status/{job_id}` 的 `result` 一致，文件名带 job id
-- [ ] `report.html` 在浏览器里排版正常，打印预览分页合理
-- [ ] 报告里的数字与界面显示一致
-- [ ] 没有结果时按钮禁用
-- [ ] 报告**不含**任何 metadata 分析内容（本轮范围外）
+- [x] JSON 下载内容与 `result` 一致，文件名带 job id
+- [x] `report.html` 在浏览器里排版正常
+- [x] 报告里的数字与界面显示一致
+- [x] 没有结果时按钮不出现
+- [x] 报告**不含**任何 metadata 分析内容（本轮范围外）
+- [ ] 打印预览分页 ← **未验证，见遗留**
 
-## 备注
+## 实测
 
-导出的 JSON 里含 `documentTexts`（评论原文）和 `docThemes`。
-如果之后要给外部分享，需要考虑是否提供一个「不含原文」的精简版 ——
-记一笔，本轮不做。
+```
+GET /api/results/{job}/report.html   → 200  text/html
+GET /api/results/nope/report.html    → 404
+未完成的 job                          → 409
+章节生成                              Themes · Theme prevalence · Theme co-occurrence
+```
+
+报告数字与界面一致：5 themes / 117 documents / 18 analysed after filtering / 123 unique labels；
+prevalence 表 Recommendations 23 docs · 25 labels；共现矩阵对称、对角线为 `—`。
+
+前端 Export 按钮出现在 Results 面板标题栏右侧，下拉两项（Printable report / JSON）。
+
+## 落地方式
+
+- 不引入 Jinja2 —— 为一个模板加依赖不划算，和之前不引入 pandas 同理。
+  用标准库拼字符串，所有插值走 `html.escape`（主题名和标签来自 LLM，评论正文来自公开网页，都不能当作可信标记）
+- PDF 不在服务端生成 —— 那意味着镜像里要塞一个无头浏览器或整套渲染栈，
+  而浏览器自带的「打印为 PDF」不需要任何依赖就能到达同一结果
+- 报告顶部有一条 `no-print` 提示，告诉用户用打印对话框存 PDF
+- `start_analysis` 顺带记下 `dataset_name`，报告里能标明数据来源
+
+## 过程中修掉的问题
+
+**评论正文里的 HTML 实体被二次转义** —— 源数据是抓取时未解码的，
+正文里带着 `&#39;` 这类实体，直接转义会把实体本身显示出来（`Northwest Women&#39;s`）。
+改为先 `unescape` 再 `escape`：显示正常，且因为最终仍然转义，安全性不变。
+
+## 遗留
+
+- **打印分页没有实际验证** —— `@media print` 规则写了（`break-inside: avoid` 等），
+  但没在真实打印预览里看过。需要人工过一遍。
+- **同样的 HTML 实体问题在前端界面也存在** —— `TopicItem` 渲染评论原文时一样会显示 `&#39;`。
+  属于既有问题，本轮没动。根治应该在 `read_dataset` 入库时解码，
+  但那会同时改变送进 LLM 的文本，影响面更大，需要单独评估。
+- 导出的 JSON 含 `documentTexts`（评论原文）和 `docThemes`。
+  若要对外分享，应考虑提供不含原文的精简版。

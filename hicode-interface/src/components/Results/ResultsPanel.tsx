@@ -5,6 +5,7 @@ import { AnalysisResult } from "@/types/analysis";
 import { TopicItem } from "./TopicItem";
 import { PrevalenceBarChart } from "./PrevalenceBarChart";
 import { CoOccurrenceHeatmap } from "./CoOccurrenceHeatmap";
+import { DownloadResults } from "./DownloadResults";
 import { FileText, Filter, ChevronDown, ChevronRight, List, BarChart3, Grid3x3 } from "lucide-react";
 
 type ResultView = "topics" | "labelsPerTheme" | "docsPerTheme" | "coOccurrence";
@@ -33,13 +34,16 @@ export function ResultsPanel({ results }: ResultsPanelProps) {
   return (
     <div className="h-full bg-[var(--card)] border border-[var(--border)] rounded-none shadow-sm flex flex-col">
       {/* Header */}
-      <div className="px-6 py-4 border-b border-[var(--border)]">
-        <h2 className="font-primary text-lg font-semibold text-[var(--foreground)]">
-          Step 3: Results
-        </h2>
-        <p className="font-secondary text-sm text-[var(--muted-foreground)]">
-          View discovered topics, questions, and associated files
-        </p>
+      <div className="px-6 py-4 border-b border-[var(--border)] flex items-start justify-between gap-4">
+        <div>
+          <h2 className="font-primary text-lg font-semibold text-[var(--foreground)]">
+            Step 3: Results
+          </h2>
+          <p className="font-secondary text-sm text-[var(--muted-foreground)]">
+            View discovered topics, questions, and associated files
+          </p>
+        </div>
+        <DownloadResults results={results} />
       </div>
 
       {/* Content */}

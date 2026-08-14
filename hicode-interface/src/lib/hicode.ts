@@ -112,6 +112,15 @@ export async function getJobStatus(jobId: string): Promise<JobStatus> {
 }
 
 /**
+ * Printable report for a finished run. Returned as a URL rather than fetched:
+ * the PDF comes from the browser's own print dialog, which needs the page
+ * open in a tab to act on.
+ */
+export function reportUrl(jobId: string): string {
+  return `${API_BASE_URL}/api/results/${jobId}/report.html`;
+}
+
+/**
  * Theme x metadata breakdown for a finished run.
  *
  * Separate from the analysis result because it is driven by the dataset's own
