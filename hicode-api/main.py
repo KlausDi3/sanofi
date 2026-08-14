@@ -744,11 +744,32 @@ async def get_result_metadata(job_id: str):
         column_types=column_types,
     )
 
+    # Empty panels have two very different causes, and the caller cannot tell
+    # them apart from the panel list alone: either nothing in the dataset was
+    # chartable, or the columns were fine but no document carrying a theme
+    # could be matched back to a row. Saying which keeps the UI from asserting
+    # the wrong one.
+    unavailable_reason = None
+    if not panels:
+        usable = (
+            len(column_types["categorical"])
+            + len(column_types["highCardinality"])
+            + len(column_types["continuous"])
+        )
+        unavailable_reason = (
+            f"{usable} metadata column(s) are chartable, but none of the documents "
+            f"that received a theme could be matched to a row by "
+            f"'{dataset['id_column']}'."
+            if usable
+            else "This dataset has no columns beyond the id and text that can be charted."
+        )
+
     return {
         "jobId": job_id,
         "query": (job.get("result") or {}).get("query"),
         "columnTypes": column_types,
         "panels": panels,
+        **({"unavailableReason": unavailable_reason} if unavailable_reason else {}),
     }
 
 

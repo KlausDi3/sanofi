@@ -6,7 +6,7 @@ import { Microscope, Loader2, BarChart3 } from "lucide-react";
 import { Sidebar } from "@/components/Sidebar/Sidebar";
 import { AnalysisResult, MetadataBreakdown } from "@/types/analysis";
 import { fetchResultMetadata, getJobStatus } from "@/lib/hicode";
-import { recallJobId } from "@/lib/jobSession";
+import { recallJobId, syncJobIdToUrl } from "@/lib/jobSession";
 import { MetadataPanelTabs } from "@/components/Metadata/MetadataPanelTabs";
 
 type PageState =
@@ -25,6 +25,10 @@ export default function ResultsPage() {
       setState({ kind: "no-run" });
       return;
     }
+
+    // Arriving from the sidebar carries no id, so put the run we resolved into
+    // the address bar — that is what makes this view linkable.
+    syncJobIdToUrl(jobId);
 
     let cancelled = false;
 

@@ -1,6 +1,5 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import {
   LayoutDashboard,
@@ -12,7 +11,6 @@ import {
   BrainCircuit,
 } from "lucide-react";
 import { NavItem } from "./NavItem";
-import { recallJobId, withJobId } from "@/lib/jobSession";
 
 // `href: undefined` marks an entry that has no page behind it yet. They stay
 // listed because they are the agreed information architecture, but they render
@@ -27,15 +25,11 @@ const navItems = [
 
 export function Sidebar() {
   const pathname = usePathname();
-  const [jobId, setJobId] = useState<string | null>(null);
 
-  // localStorage is not available during render on the server, so the job id
-  // is picked up after mount. Re-read on navigation: a run started on
-  // /analysis should be reachable from /results without a reload.
-  useEffect(() => {
-    setJobId(recallJobId());
-  }, [pathname]);
-
+  // These links deliberately carry no job id. Completing a run updates the
+  // address bar in place, which does not change the pathname, so anything the
+  // sidebar had cached would go stale and send you to the previous run.
+  // /results resolves the latest run itself and then puts it in its own URL.
   return (
     <aside className="w-[280px] h-full bg-[var(--sidebar)] border-r border-[var(--sidebar-border)] flex flex-col">
       {/* Header */}
@@ -59,9 +53,7 @@ export function Sidebar() {
               key={item.id}
               icon={item.icon}
               label={item.label}
-              // Carry the current run across, so opening Results shows the run
-              // you just did instead of an empty page.
-              href={item.href ? withJobId(item.href, jobId) : undefined}
+              href={item.href}
               active={item.href ? pathname === item.href : false}
             />
           ))}
