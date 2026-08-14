@@ -22,6 +22,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
 
 from label_generation import generate_labels, save_generation_output
 from label_clustering import cluster_labels_gpt, make_clustering_prompt, process_labels
+from metadata_analysis import infer_column_types, build_metadata_panels
 
 app = FastAPI(title="HICode API", version="1.0.0")
 
@@ -54,16 +55,63 @@ except Exception:
 
 DATA_DIR = os.path.join(os.path.dirname(__file__), '..', 'syntheticdata')
 
-def load_csv_dataset(filepath: str) -> dict[str, str]:
-    """Load a CSV file and return doc_id -> text mapping."""
-    documents = {}
+# Datasets reach us with two different schemas: the fixtures in syntheticdata/
+# use id/review_text, while the metadata-carrying exports from the research
+# notebooks use text_id/text.  Detect rather than hardcode — reading the wrong
+# column name yields a corpus of empty strings and no error.
+_ID_COLUMN_CANDIDATES = ("text_id", "id", "doc_id", "document_id")
+_TEXT_COLUMN_CANDIDATES = ("text", "review_text", "review", "content", "body")
+
+
+def detect_columns(fieldnames: list[str]) -> tuple[Optional[str], Optional[str]]:
+    """Pick the id and text columns out of a CSV header."""
+    lookup = {name.lower(): name for name in (fieldnames or [])}
+    id_column = next((lookup[c] for c in _ID_COLUMN_CANDIDATES if c in lookup), None)
+    text_column = next((lookup[c] for c in _TEXT_COLUMN_CANDIDATES if c in lookup), None)
+    return id_column, text_column
+
+
+def read_dataset(filepath: str) -> dict:
+    """Read a CSV into documents plus the untouched rows behind them.
+
+    The rows are what makes theme x metadata analysis possible: every column
+    other than id/text is metadata a researcher may want to split themes by.
+    Returns {"documents", "rows", "id_column", "text_column", "metadata_columns"}.
+    """
     with open(filepath, 'r', encoding='utf-8') as f:
         reader = csv.DictReader(f)
-        for row in reader:
-            doc_id = row.get('id', f"row-{len(documents)}")
-            text = row.get('review_text', '')
-            documents[doc_id] = text
-    return documents
+        fieldnames = reader.fieldnames or []
+        id_column, text_column = detect_columns(fieldnames)
+        rows = list(reader)
+
+    if text_column is None:
+        raise ValueError(
+            f"No text column in {os.path.basename(filepath)}; "
+            f"expected one of {_TEXT_COLUMN_CANDIDATES}, got {fieldnames}"
+        )
+
+    documents = {}
+    for index, row in enumerate(rows):
+        doc_id = row.get(id_column) if id_column else None
+        if not doc_id:
+            doc_id = f"row-{index}"
+        documents[str(doc_id)] = row.get(text_column, "")
+
+    metadata_columns = [
+        name for name in fieldnames if name not in (id_column, text_column)
+    ]
+    return {
+        "documents": documents,
+        "rows": rows,
+        "id_column": id_column,
+        "text_column": text_column,
+        "metadata_columns": metadata_columns,
+    }
+
+
+def load_csv_dataset(filepath: str) -> dict[str, str]:
+    """Load a CSV file and return doc_id -> text mapping."""
+    return read_dataset(filepath)["documents"]
 
 def get_available_datasources() -> list[dict]:
     """Scan DATA_DIR for available datasets."""
@@ -75,12 +123,20 @@ def get_available_datasources() -> list[dict]:
                 # Count rows via the CSV parser — `sum(1 for _ in f)` would
                 # over-count when text cells contain embedded newlines.
                 with open(fpath, 'r', encoding='utf-8') as f:
-                    row_count = sum(1 for _ in csv.DictReader(f))
+                    reader = csv.DictReader(f)
+                    fieldnames = reader.fieldnames or []
+                    row_count = sum(1 for _ in reader)
+                id_column, text_column = detect_columns(fieldnames)
                 sources.append({
                     "id": fname.replace('.csv', ''),
                     "name": fname.replace('_', ' ').replace('.csv', '').title(),
                     "filename": fname,
                     "documentCount": row_count,
+                    # Surfaced so the UI can tell the user up front whether a
+                    # dataset supports the metadata views at all.
+                    "metadataColumns": [
+                        n for n in fieldnames if n not in (id_column, text_column)
+                    ],
                     "path": fpath,
                 })
     # Sort by document count so the dropdown shows 10 < 20 < 50 < 100 instead
@@ -359,6 +415,10 @@ def build_pipeline_result(
         "themeLabelCounts": theme_label_counts,
         "themeDocCounts": theme_doc_counts,
         "coOccurrenceMatrix": co_matrix,
+        # Long-format doc -> themes, the join key for theme x metadata views.
+        # Equivalent to the notebook's theme_df, kept as a mapping so a
+        # document with three themes stays one entry rather than three rows.
+        "docThemes": {doc: sorted(themes) for doc, themes in doc_to_themes.items()},
     }
 
 
@@ -555,6 +615,7 @@ async def get_datasource(datasource_id: str):
 async def start_analysis(request: AnalysisRequest, background_tasks: BackgroundTasks):
     """Start a new HICode analysis job."""
     documents = request.documents
+    dataset = None
 
     # If datasource_id provided, load from backend storage
     if request.datasource_id:
@@ -562,7 +623,8 @@ async def start_analysis(request: AnalysisRequest, background_tasks: BackgroundT
         source = next((s for s in sources if s["id"] == request.datasource_id), None)
         if not source:
             raise HTTPException(status_code=404, detail="Datasource not found")
-        documents = load_csv_dataset(source["path"])
+        dataset = read_dataset(source["path"])
+        documents = dataset["documents"]
 
     if not documents:
         raise HTTPException(status_code=400, detail="No documents provided. Either upload files or specify a datasource_id.")
@@ -578,6 +640,9 @@ async def start_analysis(request: AnalysisRequest, background_tasks: BackgroundT
         "error": None,
         "created_at": now,
         "updated_at": now,
+        # Raw rows are kept out of the JobStatus response (they carry the full
+        # metadata table) and read back only by the metadata endpoint.
+        "dataset": dataset,
     }
 
     # Run pipeline in background
@@ -600,6 +665,62 @@ async def get_job_status(job_id: str):
     if job_id not in jobs:
         raise HTTPException(status_code=404, detail="Job not found")
     return JobStatus(**jobs[job_id])
+
+
+@app.get("/api/results/{job_id}/metadata")
+async def get_result_metadata(job_id: str):
+    """Theme x metadata breakdown for a completed job.
+
+    Separate from /api/status because it is only meaningful once the pipeline
+    has produced themes, and because the payload is driven by the dataset's
+    own columns — a corpus with no metadata returns an empty panel list with
+    the reason, rather than an error.
+    """
+    if job_id not in jobs:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    job = jobs[job_id]
+    if job["status"] != "completed":
+        raise HTTPException(
+            status_code=409,
+            detail=f"Job is {job['status']}; metadata is available once analysis completes",
+        )
+
+    dataset = job.get("dataset")
+    if not dataset:
+        return {
+            "jobId": job_id,
+            "panels": [],
+            "columnTypes": {"categorical": [], "continuous": [], "excluded": []},
+            "unavailableReason": "This run used uploaded files, which carry no metadata columns.",
+        }
+
+    doc_themes = (job.get("result") or {}).get("docThemes") or {}
+    if not doc_themes:
+        return {
+            "jobId": job_id,
+            "panels": [],
+            "columnTypes": {"categorical": [], "continuous": [], "excluded": []},
+            "unavailableReason": "No themes were assigned to any document in this run.",
+        }
+
+    column_types = infer_column_types(
+        dataset["rows"],
+        exclude=(dataset["id_column"], dataset["text_column"]),
+    )
+    panels = build_metadata_panels(
+        doc_themes={k: set(v) for k, v in doc_themes.items()},
+        rows=dataset["rows"],
+        id_column=dataset["id_column"],
+        column_types=column_types,
+    )
+
+    return {
+        "jobId": job_id,
+        "query": (job.get("result") or {}).get("query"),
+        "columnTypes": column_types,
+        "panels": panels,
+    }
 
 
 @app.post("/api/upload")

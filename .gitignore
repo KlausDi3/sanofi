@@ -58,3 +58,6 @@ venv/
 
 # HICode results
 hicode-api/results/
+
+# Internal meeting records (transcripts, not for the public repo)
+Meeting record/
