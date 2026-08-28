@@ -846,8 +846,34 @@ async def upload_files(files: list[UploadFile] = File(...)):
 
 @app.get("/api/jobs")
 async def list_jobs():
-    """List all jobs."""
-    return {"jobs": list(jobs.values())}
+    """Summaries of every run, newest first.
+
+    Deliberately a projection rather than the stored job. Each job carries the
+    dataset it ran over, so returning jobs.values() verbatim served the whole
+    metadata table -- physician names, NPIs, ZIPs, biographies -- for every run
+    at once, megabytes of it, to anyone who asked for a list. A listing needs
+    counts and labels; the full result stays behind /api/status/{job_id} and
+    the rows behind /api/results/{job_id}/metadata.
+    """
+    summaries = []
+    for job in jobs.values():
+        result = job.get("result") or {}
+        summaries.append({
+            "job_id": job["job_id"],
+            "status": job["status"],
+            "created_at": job["created_at"],
+            "updated_at": job["updated_at"],
+            "error": job.get("error"),
+            "datasetName": job.get("dataset_name"),
+            "query": result.get("query"),
+            "themeCount": len(result.get("topics", [])),
+            "totalDocuments": result.get("totalDocuments"),
+            "filteredDocuments": result.get("filteredDocuments"),
+            "totalLabels": result.get("totalLabels"),
+        })
+
+    summaries.sort(key=lambda s: s["created_at"], reverse=True)
+    return {"jobs": summaries}
 
 
 @app.delete("/api/jobs/{job_id}")
