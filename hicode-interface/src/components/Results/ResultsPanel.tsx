@@ -6,12 +6,25 @@ import { TopicItem } from "./TopicItem";
 import { PrevalenceBarChart } from "./PrevalenceBarChart";
 import { CoOccurrenceHeatmap } from "./CoOccurrenceHeatmap";
 import { DownloadResults } from "./DownloadResults";
-import { FileText, Filter, ChevronDown, ChevronRight, List, BarChart3, Grid3x3 } from "lucide-react";
+import { FileText, Filter, ChevronDown, ChevronRight, List, BarChart3, Grid3x3, Coins } from "lucide-react";
+import { describeUsage, formatTokens } from "@/lib/usage";
 
 type ResultView = "topics" | "labelsPerTheme" | "docsPerTheme" | "coOccurrence";
 
 interface ResultsPanelProps {
   results: AnalysisResult | null;
+}
+
+/** Per-stage breakdown for the hover tooltip; the bar itself shows the total. */
+function usageTooltip(results: AnalysisResult): string {
+  const stages = results.usage?.stages || {};
+  const lines = (["embedding", "generation", "clustering"] as const)
+    .filter((s) => stages[s])
+    .map((s) => {
+      const st = stages[s]!;
+      return `${s}: ${formatTokens(st.totalTokens)} tokens, ${st.requests} call${st.requests !== 1 ? "s" : ""} (${st.model})`;
+    });
+  return lines.join("\n");
 }
 
 export function ResultsPanel({ results }: ResultsPanelProps) {
@@ -76,6 +89,18 @@ export function ResultsPanel({ results }: ResultsPanelProps) {
               <span className="font-secondary text-xs text-[var(--muted-foreground)]">
                 {results.totalLabels} labels generated
               </span>
+              {describeUsage(results.usage) && (
+                <div
+                  className="flex items-center gap-1.5"
+                  title={usageTooltip(results)}
+                >
+                  <Coins className="w-3.5 h-3.5 text-[var(--muted-foreground)]" />
+                  <span className="font-secondary text-xs text-[var(--muted-foreground)]">
+                    {describeUsage(results.usage)}
+                    {results.mock && " (simulated)"}
+                  </span>
+                </div>
+              )}
             </div>
 
             {/* Filtered Reviews Section */}

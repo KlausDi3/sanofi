@@ -7,7 +7,7 @@ import { Sidebar } from "@/components/Sidebar/Sidebar";
 import { DataInputCard } from "@/components/DataInput/DataInputCard";
 import { AnalysisTrigger } from "@/components/Analysis/AnalysisTrigger";
 import { ResultsPanel } from "@/components/Results/ResultsPanel";
-import { AnalysisResult, Datasource } from "@/types/analysis";
+import { AnalysisResult, Datasource, TokenUsage } from "@/types/analysis";
 import { analyzeCorpus, getJobStatus, parseFiles, estimateDocumentCount } from "@/lib/hicode";
 import { recallJobId, rememberJobId, syncJobIdToUrl, withJobId } from "@/lib/jobSession";
 
@@ -18,6 +18,7 @@ export default function AnalysisPage() {
   const [connectedDatasource, setConnectedDatasource] = useState<Datasource | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [progressMessage, setProgressMessage] = useState<string | null>(null);
+  const [liveUsage, setLiveUsage] = useState<TokenUsage | null>(null);
   const [results, setResults] = useState<AnalysisResult | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -78,6 +79,7 @@ export default function AnalysisPage() {
             background: bg,
             onProgress: (status) => {
               setProgressMessage(status.progress);
+              setLiveUsage(status.usage);
             },
           }
         );
@@ -96,6 +98,7 @@ export default function AnalysisPage() {
             background: bg,
             onProgress: (status) => {
               setProgressMessage(status.progress);
+              setLiveUsage(status.usage);
             },
           }
         );
@@ -103,6 +106,7 @@ export default function AnalysisPage() {
 
       setResults(result);
       setProgressMessage(null);
+      setLiveUsage(null);
 
       // build_pipeline_result stamps the job id onto the result as `id`.
       if (result.id) {
@@ -189,6 +193,7 @@ export default function AnalysisPage() {
                 documentEstimate={documentEstimate}
                 isLoading={isAnalyzing}
                 progressMessage={progressMessage}
+                liveUsage={liveUsage}
                 onAnalyze={handleAnalyze}
                 hasData={hasData}
                 connectedDatasource={connectedDatasource}

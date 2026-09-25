@@ -174,6 +174,12 @@ def render_report_html(
     if filtered is not None and filtered != total_documents:
         stats += _stat(filtered, "Analysed after filtering")
     stats += _stat(result.get("totalLabels", 0), "Unique labels")
+    usage = result.get("usage") or {}
+    if usage.get("totalTokens"):
+        stats += _stat(f"{usage['totalTokens']:,}", "Tokens used")
+        cost = usage.get("estimatedCostUsd")
+        if cost is not None:
+            stats += _stat(f"${cost:,.2f}" if cost >= 0.01 else f"${cost:.4f}", "Estimated cost")
 
     source_line = f"Dataset: {escape(dataset_name)}<br>" if dataset_name else ""
 

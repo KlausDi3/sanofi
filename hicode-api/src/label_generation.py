@@ -9,18 +9,20 @@ def clean_label(raw_label): # move to utils
     labels = [i.replace("LABEL: ", "").replace("[", "").replace("]", "").strip() for i in labels]
     return labels
 
-def generate_labels(data_processed, system_prompt, config):
+def generate_labels(data_processed, system_prompt, config, usage=None):
     if config is None:
         config = {}
     model_name = config["model_name"]
     if "gpt" in model_name.lower():
-        return generate_labels_gpt(data_processed, system_prompt, config)
+        return generate_labels_gpt(data_processed, system_prompt, config, usage=usage)
     # elif "llama" in model_name.lower():
     #     return generate_labels_hf(data_processed, system_prompt, config)
     else:
         raise ValueError(f"Model {model_name} is not supported.")
     
-def generate_labels_gpt(data_processed, system_prompt, config):
+def generate_labels_gpt(data_processed, system_prompt, config, usage=None):
+    """One call per document. `usage` is an optional UsageTracker; each
+    response's token counts are added to its "generation" stage."""
     api_key = os.getenv("OPENAI_API_KEY")
     client = OpenAI(api_key = api_key)
     output = {}
@@ -41,6 +43,8 @@ def generate_labels_gpt(data_processed, system_prompt, config):
                 }
             ],
             )
+        if usage is not None:
+            usage.add("generation", response.model or config["model_name"], response.usage)
         raw_label = response.choices[0].message.content
         if "irrelevant" in raw_label.lower():
             continue

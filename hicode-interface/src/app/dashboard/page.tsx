@@ -10,11 +10,13 @@ import {
   Microscope,
   Layers,
   AlertTriangle,
+  Coins,
 } from "lucide-react";
 import { Sidebar } from "@/components/Sidebar/Sidebar";
 import { Datasource, JobSummary } from "@/types/analysis";
 import { fetchDatasources, fetchJobs } from "@/lib/hicode";
 import { withJobId } from "@/lib/jobSession";
+import { describeUsage, formatCost, formatTokens, sumUsage } from "@/lib/usage";
 
 /**
  * Landing page: what this workspace has run, and what it can run over.
@@ -46,6 +48,10 @@ export default function DashboardPage() {
 
   const completed = (jobs || []).filter((j) => j.status === "completed");
   const loading = !offline && jobs === null;
+  // Every run, not just completed ones: a failed run still paid for the calls
+  // it made before failing.
+  const totalUsage = sumUsage((jobs || []).map((j) => j.usage));
+  const totalCost = formatCost(totalUsage.estimatedCostUsd);
 
   return (
     <div className="flex h-full">
@@ -83,7 +89,7 @@ export default function DashboardPage() {
 
           {!loading && !offline && (
             <>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
                 <Stat icon={Database} value={datasources?.length ?? 0} label="Datasets" />
                 <Stat icon={Microscope} value={completed.length} label="Completed runs" />
                 <Stat
@@ -101,6 +107,12 @@ export default function DashboardPage() {
                   icon={FileText}
                   value={datasources?.reduce((sum, d) => sum + d.documentCount, 0) ?? 0}
                   label="Documents available"
+                />
+                <Stat
+                  icon={Coins}
+                  value={formatTokens(totalUsage.totalTokens)}
+                  label={totalCost ? `Tokens used · ~${totalCost}` : "Tokens used"}
+                  title={`${totalUsage.totalTokens.toLocaleString()} tokens across ${totalUsage.requests.toLocaleString()} model calls`}
                 />
               </div>
 
@@ -126,17 +138,22 @@ function Stat({
   icon: Icon,
   value,
   label,
+  title,
 }: {
   icon: typeof Database;
-  value: number;
+  value: number | string;
   label: string;
+  title?: string;
 }) {
   return (
-    <div className="px-4 py-3 bg-[var(--secondary)] border border-[var(--border)] rounded-lg">
+    <div
+      className="px-4 py-3 bg-[var(--secondary)] border border-[var(--border)] rounded-lg"
+      title={title}
+    >
       <div className="flex items-center gap-2">
         <Icon className="w-3.5 h-3.5 text-[var(--muted-foreground)]" />
         <p className="font-primary text-xl font-semibold text-[var(--foreground)]">
-          {value.toLocaleString()}
+          {typeof value === "number" ? value.toLocaleString() : value}
         </p>
       </div>
       <p className="font-secondary text-xs text-[var(--muted-foreground)] mt-0.5">{label}</p>
@@ -184,6 +201,12 @@ function RecentRuns({ jobs }: { jobs: JobSummary[] }) {
                         job.filteredDocuments !== job.totalDocuments &&
                         ` · ${job.filteredDocuments} of ${job.totalDocuments} analysed`}
                     </>
+                  )}
+                  {describeUsage(job.usage) && (
+                    <span title={`${job.usage!.totalTokens.toLocaleString()} tokens`}>
+                      {" · "}
+                      {describeUsage(job.usage)}
+                    </span>
                   )}
                   {" · "}
                   {timeAgo(job.created_at)}

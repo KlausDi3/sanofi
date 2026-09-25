@@ -38,6 +38,27 @@ export interface FilteredReview {
   score: number;
 }
 
+/** Tokens one pipeline stage spent, with the model that spent them. */
+export interface StageUsage {
+  model: string;
+  requests: number;
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+  /** Null when the model has no price on file (see hicode-api/src/usage.py). */
+  estimatedCostUsd: number | null;
+}
+
+/** Token accounting for a run, mirrored from the backend after every model call. */
+export interface TokenUsage {
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+  requests: number;
+  estimatedCostUsd: number | null;
+  stages: Partial<Record<"embedding" | "generation" | "clustering", StageUsage>>;
+}
+
 export interface AnalysisResult {
   id: string;
   status: 'pending' | 'processing' | 'completed' | 'error';
@@ -53,6 +74,8 @@ export interface AnalysisResult {
   themeLabelCounts?: Record<string, number>;      // bar chart A: # raw labels per theme
   themeDocCounts?: Record<string, number>;        // bar chart B: # documents per theme
   coOccurrenceMatrix?: number[][];                // heatmap: symmetric N×N, diag=0
+  usage?: TokenUsage;                             // what the run cost in tokens
+  mock?: boolean;                                 // served from fixtures, not OpenAI
 }
 
 // ---- Theme x metadata breakdown (GET /api/results/{job_id}/metadata) ----
@@ -158,4 +181,5 @@ export interface JobSummary {
   totalDocuments?: number | null;
   filteredDocuments?: number | null;
   totalLabels?: number | null;
+  usage?: TokenUsage | null;
 }

@@ -1,7 +1,8 @@
 "use client";
 
 import { Play, FileText, Database, Loader2, Search, AlertTriangle } from "lucide-react";
-import { Datasource } from "@/types/analysis";
+import { Datasource, TokenUsage } from "@/types/analysis";
+import { describeUsage } from "@/lib/usage";
 
 // Mirrors REQUIRE_QUERY_ABOVE / RELEVANCE_TOP_K in hicode-api/main.py. The
 // backend refuses these runs anyway; catching it here explains the rule while
@@ -14,6 +15,8 @@ interface AnalysisTriggerProps {
   documentEstimate: number;
   isLoading: boolean;
   progressMessage?: string | null;
+  /** Tokens spent so far by the running job; the backend updates it per call. */
+  liveUsage?: TokenUsage | null;
   onAnalyze: () => void;
   hasData: boolean;
   connectedDatasource: Datasource | null;
@@ -25,6 +28,7 @@ export function AnalysisTrigger({
   documentEstimate,
   isLoading,
   progressMessage,
+  liveUsage,
   onAnalyze,
   hasData,
   connectedDatasource,
@@ -103,10 +107,15 @@ export function AnalysisTrigger({
         {/* Progress Message */}
         {isLoading && progressMessage && (
           <div className="flex items-center gap-2 px-4 py-2 bg-[var(--secondary)] rounded-lg">
-            <Loader2 className="w-4 h-4 animate-spin text-[var(--primary)]" />
-            <span className="font-secondary text-sm text-[var(--foreground)]">
+            <Loader2 className="w-4 h-4 animate-spin text-[var(--primary)] shrink-0" />
+            <span className="font-secondary text-sm text-[var(--foreground)] flex-1">
               {progressMessage}
             </span>
+            {describeUsage(liveUsage) && (
+              <span className="font-secondary text-xs text-[var(--muted-foreground)] tabular-nums shrink-0">
+                {describeUsage(liveUsage)}
+              </span>
+            )}
           </div>
         )}
 

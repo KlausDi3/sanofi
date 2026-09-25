@@ -23,6 +23,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
 
 from label_generation import generate_labels, save_generation_output
 from label_clustering import cluster_labels_gpt, make_clustering_prompt, process_labels
+from usage import UsageTracker, mock_usage
 from metadata_analysis import infer_column_types, build_metadata_panels
 from report import render_report_html
 
@@ -173,9 +174,15 @@ def get_available_datasources() -> list[dict]:
 
 # ============ Embedding Utilities ============
 
-def get_embeddings(texts: list[str], model: str = "text-embedding-3-small") -> list[list[float]]:
+def get_embeddings(
+    texts: list[str],
+    model: str = "text-embedding-3-small",
+    usage: Optional[UsageTracker] = None,
+) -> list[list[float]]:
     """Get OpenAI embeddings for a list of texts."""
     response = openai_client.embeddings.create(input=texts, model=model)
+    if usage is not None:
+        usage.add("embedding", response.model or model, response.usage)
     return [item.embedding for item in response.data]
 
 
@@ -191,6 +198,7 @@ def filter_by_relevance(
     query: str,
     top_k: int = 50,
     threshold: float = 0.3,
+    usage: Optional[UsageTracker] = None,
 ) -> tuple[dict[str, str], dict[str, float]]:
     """Filter documents by embedding similarity to the query.
     Returns (filtered_docs, similarity_scores)."""
@@ -199,7 +207,7 @@ def filter_by_relevance(
 
     # Get embeddings
     all_texts = [query] + doc_texts
-    embeddings = get_embeddings(all_texts)
+    embeddings = get_embeddings(all_texts, usage=usage)
     query_embedding = embeddings[0]
     doc_embeddings = embeddings[1:]
 
@@ -247,6 +255,9 @@ class JobStatus(BaseModel):
     error: Optional[str] = None
     created_at: str
     updated_at: str
+    # Running token total (see src/usage.py). Updated after every model call
+    # while the job is processing, so pollers can show it counting up.
+    usage: Optional[dict] = None
 
 
 class Topic(BaseModel):
@@ -507,6 +518,8 @@ def run_mock_pipeline(job_id: str, documents: dict, query: str = None):
             job_id=job_id,
         )
         result["mock"] = True
+        result["usage"] = mock_usage(fixture_docs, fixtures["gen_result"])
+        jobs[job_id]["usage"] = result["usage"]
 
         jobs[job_id]["status"] = "completed"
         jobs[job_id]["result"] = result
@@ -530,13 +543,21 @@ def run_hicode_pipeline(job_id: str, documents: dict, coding_goal: str, backgrou
         filtered_count = total_documents
         relevance_scores = {}
 
+        # Mirror every model call's tokens onto the job so /api/status shows
+        # the total climbing during the run, not just at the end.
+        def _record_usage(snapshot: dict) -> None:
+            jobs[job_id]["usage"] = snapshot
+
+        usage = UsageTracker(on_update=_record_usage)
+
         # Step 0: Embedding-based coarse ranking (if query provided)
         if query and query.strip():
             jobs[job_id]["progress"] = "Filtering relevant reviews by embedding similarity..."
             jobs[job_id]["updated_at"] = _now_iso()
 
             documents, relevance_scores = filter_by_relevance(
-                documents, query, top_k=min(RELEVANCE_TOP_K, total_documents), threshold=0.25
+                documents, query, top_k=min(RELEVANCE_TOP_K, total_documents), threshold=0.25,
+                usage=usage,
             )
             filtered_count = len(documents)
 
@@ -560,7 +581,7 @@ def run_hicode_pipeline(job_id: str, documents: dict, coding_goal: str, backgrou
         for doc_id, text in documents.items():
             data_processed[f"{doc_id}_0"] = text
 
-        gen_result = generate_labels(data_processed, system_prompt, config)
+        gen_result = generate_labels(data_processed, system_prompt, config, usage=usage)
 
         if not gen_result:
             raise ValueError("No labels generated. Check if documents are relevant to the coding goal.")
@@ -575,7 +596,8 @@ def run_hicode_pipeline(job_id: str, documents: dict, coding_goal: str, backgrou
             cluster_prompt,
             config,
             save_intermediate=False,
-            max_n_iter=config["max_n_iter"]
+            max_n_iter=config["max_n_iter"],
+            usage=usage,
         )
 
         jobs[job_id]["progress"] = "Building results..."
@@ -594,6 +616,9 @@ def run_hicode_pipeline(job_id: str, documents: dict, coding_goal: str, backgrou
         # corpus size so the UI summary stays honest.
         result["totalDocuments"] = total_documents
         result["filteredDocuments"] = filtered_count
+        # Also on the result, so exports and the report carry what the run cost.
+        result["usage"] = usage.to_dict()
+        jobs[job_id]["usage"] = result["usage"]
 
         jobs[job_id]["status"] = "completed"
         jobs[job_id]["result"] = result
@@ -676,6 +701,7 @@ async def start_analysis(request: AnalysisRequest, background_tasks: BackgroundT
         "status": "pending",
         "progress": "Initializing...",
         "result": None,
+        "usage": None,
         "error": None,
         "created_at": now,
         "updated_at": now,
@@ -881,6 +907,7 @@ async def list_jobs():
             "totalDocuments": result.get("totalDocuments"),
             "filteredDocuments": result.get("filteredDocuments"),
             "totalLabels": result.get("totalLabels"),
+            "usage": job.get("usage"),
         })
 
     summaries.sort(key=lambda s: s["created_at"], reverse=True)

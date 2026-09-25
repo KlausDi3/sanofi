@@ -4,6 +4,7 @@ import {
   Datasource,
   JobSummary,
   MetadataBreakdown,
+  TokenUsage,
 } from "@/types/analysis";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
@@ -16,6 +17,8 @@ interface JobStatus {
   error: string | null;
   created_at: string;
   updated_at: string;
+  /** Climbs while the job runs; null before the first model call. */
+  usage: TokenUsage | null;
 }
 
 interface AnalyzeRequest {

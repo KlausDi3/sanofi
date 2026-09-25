@@ -46,7 +46,7 @@ def save_iteration(iteration_result, n_iter, dataset, cluster_model_name, genera
     with open(os.path.join(result_dir, f"cluster_iter_{n_iter}.json"), "w") as f:
         json.dump(iteration_result, f, indent=4)
 
-def _run_batch(client, system_prompt, cluster_model_name, user_input):
+def _run_batch(client, system_prompt, cluster_model_name, user_input, usage=None):
     response = client.chat.completions.create(
         model = cluster_model_name,
         messages=[
@@ -78,14 +78,16 @@ def _run_batch(client, system_prompt, cluster_model_name, user_input):
         frequency_penalty=0,
         presence_penalty=0
         )
-        
+    if usage is not None:
+        usage.add("clustering", response.model or cluster_model_name, response.usage)
+
     try:
         model_output = json.loads(response.choices[0].message.content)
     except json.JSONDecodeError:
         model_output = {}
     return model_output
             
-def cluster_labels_gpt(generation_result, system_prompt, config, save_intermediate=True, gen_result_id=None, max_n_iter=3):
+def cluster_labels_gpt(generation_result, system_prompt, config, save_intermediate=True, gen_result_id=None, max_n_iter=3, usage=None):
     if type(generation_result) is str:
         with open(generation_result, "r") as f:
             generation_result = json.load(f)
@@ -113,7 +115,7 @@ def cluster_labels_gpt(generation_result, system_prompt, config, save_intermedia
         cluster = {}
         for b in tqdm(range(n_batch)):
             user_input = str(labels_to_cluster[b*batch_size:(b+1)*batch_size])
-            model_output = _run_batch(client, system_prompt, cluster_model_name, user_input)
+            model_output = _run_batch(client, system_prompt, cluster_model_name, user_input, usage=usage)
             if model_output != {}:
                 for k in model_output.keys():
                     cluster.setdefault(k, []).extend(model_output[k])
