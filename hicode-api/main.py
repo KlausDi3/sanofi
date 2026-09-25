@@ -5,7 +5,7 @@ import uuid
 import json
 import numpy as np
 from typing import Optional
-from datetime import datetime
+from datetime import datetime, timezone
 from concurrent.futures import ThreadPoolExecutor
 
 from dotenv import load_dotenv
@@ -36,6 +36,17 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+def _now_iso() -> str:
+    """Timestamp for job records, UTC and explicitly offset-tagged.
+
+    A naive isoformat() is read by the browser as local time. Deployed, the
+    server keeps UTC while the viewer sits in EDT, so a run that just finished
+    renders as four hours old on the dashboard.
+    """
+    return datetime.now(timezone.utc).isoformat()
+
 
 # In-memory job storage (use Redis/DB in production)
 jobs: dict = {}
@@ -471,7 +482,7 @@ def run_mock_pipeline(job_id: str, documents: dict, query: str = None):
     try:
         jobs[job_id]["status"] = "processing"
         jobs[job_id]["progress"] = "Running in mock mode (serving canned analysis fixtures)..."
-        jobs[job_id]["updated_at"] = datetime.now().isoformat()
+        jobs[job_id]["updated_at"] = _now_iso()
         time.sleep(1.5)
 
         fixtures = _load_mock_fixtures()
@@ -500,11 +511,11 @@ def run_mock_pipeline(job_id: str, documents: dict, query: str = None):
         jobs[job_id]["status"] = "completed"
         jobs[job_id]["result"] = result
         jobs[job_id]["progress"] = None
-        jobs[job_id]["updated_at"] = datetime.now().isoformat()
+        jobs[job_id]["updated_at"] = _now_iso()
     except Exception as e:
         jobs[job_id]["status"] = "error"
         jobs[job_id]["error"] = str(e)
-        jobs[job_id]["updated_at"] = datetime.now().isoformat()
+        jobs[job_id]["updated_at"] = _now_iso()
 
 
 def run_hicode_pipeline(job_id: str, documents: dict, coding_goal: str, background: str, model_name: str, query: str = None):
@@ -513,7 +524,7 @@ def run_hicode_pipeline(job_id: str, documents: dict, coding_goal: str, backgrou
         return run_mock_pipeline(job_id, documents, query)
     try:
         jobs[job_id]["status"] = "processing"
-        jobs[job_id]["updated_at"] = datetime.now().isoformat()
+        jobs[job_id]["updated_at"] = _now_iso()
 
         total_documents = len(documents)
         filtered_count = total_documents
@@ -522,7 +533,7 @@ def run_hicode_pipeline(job_id: str, documents: dict, coding_goal: str, backgrou
         # Step 0: Embedding-based coarse ranking (if query provided)
         if query and query.strip():
             jobs[job_id]["progress"] = "Filtering relevant reviews by embedding similarity..."
-            jobs[job_id]["updated_at"] = datetime.now().isoformat()
+            jobs[job_id]["updated_at"] = _now_iso()
 
             documents, relevance_scores = filter_by_relevance(
                 documents, query, top_k=min(RELEVANCE_TOP_K, total_documents), threshold=0.25
@@ -530,7 +541,7 @@ def run_hicode_pipeline(job_id: str, documents: dict, coding_goal: str, backgrou
             filtered_count = len(documents)
 
         jobs[job_id]["progress"] = f"Generating labels for {filtered_count} documents..."
-        jobs[job_id]["updated_at"] = datetime.now().isoformat()
+        jobs[job_id]["updated_at"] = _now_iso()
 
         # Config
         config = {
@@ -555,7 +566,7 @@ def run_hicode_pipeline(job_id: str, documents: dict, coding_goal: str, backgrou
             raise ValueError("No labels generated. Check if documents are relevant to the coding goal.")
 
         jobs[job_id]["progress"] = "Clustering labels..."
-        jobs[job_id]["updated_at"] = datetime.now().isoformat()
+        jobs[job_id]["updated_at"] = _now_iso()
 
         # Step 2: Hierarchical Clustering
         cluster_prompt = make_clustering_prompt(goal=coding_goal)
@@ -568,7 +579,7 @@ def run_hicode_pipeline(job_id: str, documents: dict, coding_goal: str, backgrou
         )
 
         jobs[job_id]["progress"] = "Building results..."
-        jobs[job_id]["updated_at"] = datetime.now().isoformat()
+        jobs[job_id]["updated_at"] = _now_iso()
 
         result = build_pipeline_result(
             gen_result=gen_result,
@@ -587,12 +598,12 @@ def run_hicode_pipeline(job_id: str, documents: dict, coding_goal: str, backgrou
         jobs[job_id]["status"] = "completed"
         jobs[job_id]["result"] = result
         jobs[job_id]["progress"] = None
-        jobs[job_id]["updated_at"] = datetime.now().isoformat()
+        jobs[job_id]["updated_at"] = _now_iso()
 
     except Exception as e:
         jobs[job_id]["status"] = "error"
         jobs[job_id]["error"] = str(e)
-        jobs[job_id]["updated_at"] = datetime.now().isoformat()
+        jobs[job_id]["updated_at"] = _now_iso()
         print(f"Error in job {job_id}: {e}")
 
 
@@ -658,7 +669,7 @@ async def start_analysis(request: AnalysisRequest, background_tasks: BackgroundT
         )
 
     job_id = str(uuid.uuid4())
-    now = datetime.now().isoformat()
+    now = _now_iso()
 
     jobs[job_id] = {
         "job_id": job_id,

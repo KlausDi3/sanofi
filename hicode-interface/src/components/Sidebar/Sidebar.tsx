@@ -16,7 +16,7 @@ import { NavItem } from "./NavItem";
 // listed because they are the agreed information architecture, but they render
 // as disabled rather than as working links.
 const navItems = [
-  { icon: LayoutDashboard, label: "Dashboard", id: "dashboard", href: undefined },
+  { icon: LayoutDashboard, label: "Dashboard", id: "dashboard", href: "/dashboard" },
   { icon: Database, label: "Data Sources", id: "data", href: undefined },
   { icon: Microscope, label: "Run Analysis", id: "analysis", href: "/analysis" },
   { icon: FileText, label: "Results", id: "results", href: "/results" },

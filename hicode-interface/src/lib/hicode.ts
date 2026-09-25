@@ -2,6 +2,7 @@ import {
   AnalysisInput,
   AnalysisResult,
   Datasource,
+  JobSummary,
   MetadataBreakdown,
 } from "@/types/analysis";
 
@@ -109,6 +110,19 @@ export async function getJobStatus(jobId: string): Promise<JobStatus> {
   }
 
   return response.json();
+}
+
+/**
+ * Past runs, newest first. Summaries only — the full result and the dataset
+ * rows stay behind their own endpoints.
+ */
+export async function fetchJobs(): Promise<JobSummary[]> {
+  const response = await fetch(`${API_BASE_URL}/api/jobs`);
+  if (!response.ok) {
+    throw new Error("Failed to fetch runs");
+  }
+  const data = await response.json();
+  return data.jobs;
 }
 
 /**

@@ -140,4 +140,22 @@ export interface Datasource {
   name: string;
   filename: string;
   documentCount: number;
+  /** Everything other than the id and text columns. Empty means this dataset
+   *  cannot support the theme x metadata views. */
+  metadataColumns?: string[];
+}
+
+/** One past run, as GET /api/jobs reports it — counts and labels only. */
+export interface JobSummary {
+  job_id: string;
+  status: "pending" | "processing" | "completed" | "error";
+  created_at: string;
+  updated_at: string;
+  error?: string | null;
+  datasetName?: string | null;
+  query?: string | null;
+  themeCount: number;
+  totalDocuments?: number | null;
+  filteredDocuments?: number | null;
+  totalLabels?: number | null;
 }
